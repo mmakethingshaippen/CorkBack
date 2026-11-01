@@ -154,3 +154,21 @@ Built promotion only. No polish/seed/demo/writeup, no other feature. No changes 
   - B signed-IN home: label present, promoted-before-ordinary true (same server-rendered list).
   - Owner A removed promotion → 200, `is_promoted` back to false.
   - Cleanup: 2 test users + profiles + both postings removed; independent recount residual postings/profiles/authUsers all 0. Throwaway harness deleted.
+
+## 2026-11-01 — Kiro — Stage 5: polish, seed, deploy prep, demo + writeup prep
+
+No new feature. Polish fixes only where the sweep found a problem; existing tokens only; no new color; no Figma texture swatch.
+
+- **Sweep findings + fixes:**
+  - Dead "Share" controls (posting-page header + PostingActions row) had no handler → replaced with a working `ShareButton` (Web Share API, clipboard copy fallback). Existing tokens (navy link / neutral button).
+  - Dead "Report" control on the posting-page header → removed (no report feature exists; it was a broken promise).
+  - Dead home search input ("Search any town worldwide" with no behavior) → removed (building search would be a new feature, out of scope).
+  - Seed placeholder URL `https://example.com/quiet-sounds` → nulled (no real link supplied; shipping a fake link avoided).
+  - No placeholder text/TODOs, no broken links, and no static mobile-layout break found. Deferred-feature placeholders (`/following`, `/friends`, disabled Follow/Connect) are honestly labeled and kept — not dead buttons.
+- **Verification after fixes:** `npm run typecheck` ✓, `npm test` ✓ (57/57), `npm run build` ✓ (no warnings).
+- **Deploy to Vercel — BLOCKED (not linked).** No `.vercel/` dir, no `project.json`, and the Vercel CLI is not installed/authenticated on this machine. Per instruction I stopped rather than guess. Steps for Max are in the report and WRITEUP_DRAFT. `NEXT_PUBLIC_APP_URL` must be set to the live URL after linking; the live device checks (Part 3) depend on the deploy and were therefore deferred.
+- **Resend production note:** a VERIFIED Resend sending domain is still required for production alert emails; `onboarding@resend.dev` was testing-only.
+- **Seed:** kept the 3 real SAMPLE postings modeled on the Figma examples (London music, Berlin lost-and-found, Mexico City community) — content already in the seed, no invented businesses/people/contact details, no placeholder URLs. Adding real campus-board postings requires Max to supply real flyer content. Seed count = 3. No test data is shipped in the app (test users/postings from prior live runs were removed).
+- **Demo plan:** `DEMO_PLAN.md` — a shot list under 3:00 covering scan end-to-end + map + alerts + messaging + promoted label. Not recorded.
+- **Writeup draft:** `WRITEUP_DRAFT.md` — built from KIRO_USAGE_LOG.md; names each Kiro feature used; names ChatGPT discrete help (scan fix) and states Kilo was not used; states Figma design existed before the window and app code inside it; names Resurrection + Best Student Project. The exact Gemini model id verified/used (`gemini-3.5-flash-lite`) is named in this log.
+- **Repo check:** prepared (not pushed) — see the report for the staged list and the confirmations (.env.local/node_modules/.next excluded; .kiro + LICENSE included; no key in any staged file; no test flyer in the repo; build log names the model id).

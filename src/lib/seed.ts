@@ -1,11 +1,14 @@
 import type { Posting } from "./types";
 
 /**
- * Seed postings matching the Figma posting examples (London concert, Berlin lost
- * cat, Mexico City market). Used as a live, no-credentials fallback so the map
- * and posting pages render during the build, and as Stage 5 seed content.
- * All coordinates are approximate public neighbourhood points, not real device
- * locations.
+ * Seed postings = real SAMPLE content modeled on the Figma posting examples
+ * (London concert, Berlin lost cat, Mexico City market). Used as a live,
+ * no-credentials fallback so the map and posting pages render, and as the
+ * Stage 5 seed. Coordinates are approximate public neighbourhood points, not
+ * real device locations. No invented businesses/people/contact details: handles
+ * and places are the Figma sample identities, and no placeholder URLs are
+ * shipped (rsvpUrl is null unless a real link is supplied). To add real
+ * campus-board postings, replace/extend this list with real flyer content.
  */
 export const SEED_POSTINGS: Posting[] = [
   {
@@ -14,7 +17,7 @@ export const SEED_POSTINGS: Posting[] = [
     body: "An intimate evening of acoustic music and careful listening beneath the chapel arches. Tickets £12. Ages 18+. Step-free access via the side entrance; message the poster about access.",
     categorySlug: "music",
     flyerUrl: null,
-    rsvpUrl: "https://example.com/quiet-sounds",
+    rsvpUrl: null,
     eventDate: "2026-11-13",
     eventTime: "19:30",
     placeLabel: "Union Chapel, Compton Terrace, London N1 2UN",

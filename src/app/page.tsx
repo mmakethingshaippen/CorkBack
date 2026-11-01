@@ -4,7 +4,6 @@ import { CorkBand } from "@/components/ui/CorkBand";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { PostingCard } from "@/components/ui/PostingCard";
 import { MapView } from "@/components/map/MapView";
-import { SearchIcon } from "@/components/icons";
 import { listActivePostings } from "@/lib/postings";
 import { tiltFor } from "@/components/ui/Card";
 import { getViewer } from "@/lib/auth";
@@ -62,16 +61,8 @@ export default async function Home() {
         </CorkBand>
       </div>
 
-      {/* Search + actions */}
+      {/* Actions */}
       <div className="space-y-3 px-4 pt-4">
-        <label className="flex items-center gap-2 rounded-control border-2 border-deep-navy bg-white px-3 py-2">
-          <SearchIcon className="text-deep-navy" />
-          <input
-            className="w-full bg-transparent text-ink outline-none"
-            placeholder="Search any town worldwide"
-            aria-label="Search any town worldwide"
-          />
-        </label>
         <div className="flex gap-3">
           {/* One dark-red main action per screen: Scan a flyer. */}
           <Link

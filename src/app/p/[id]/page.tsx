@@ -12,6 +12,7 @@ import { getPosting } from "@/lib/postings";
 import { getViewer } from "@/lib/auth";
 import { MessagePoster } from "@/components/ui/MessagePoster";
 import { PromoteToggle } from "@/components/ui/PromoteToggle";
+import { ShareButton } from "@/components/ui/ShareButton";
 
 export default async function PostingPage({
   params,
@@ -44,9 +45,8 @@ export default async function PostingPage({
 
         <div className="flex items-center justify-between">
           <CategoryChip label={categoryLabel(posting.categorySlug)} as="span" />
-          <span className="inline-flex items-center gap-3 text-sm text-deep-navy">
-            <span className="inline-flex items-center gap-1">Share</span>
-            <span className="inline-flex items-center gap-1">Report</span>
+          <span className="text-sm">
+            <ShareButton title={posting.title} variant="link" />
           </span>
         </div>
 

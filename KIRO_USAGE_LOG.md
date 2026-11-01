@@ -63,3 +63,11 @@ The final writeup is built from this log, not from memory.
 - **Unit testing (vitest)** — Added `src/lib/promotion.test.ts` (7). Encoding placement as a pure, group-local stable sort let the "promoted first in same area+category / ordinary order unchanged / no cross-area or cross-category leapfrog / ends at expiry" rules be tested deterministically without a DB. Promotion's no-effect on alerts is also covered by the existing alert matcher ignoring `is_promoted`.
 - **Supabase RLS — verified live.** Owner-only promotion proven: a non-owner got 403, the owner succeeded, and removal reverted the flag. Public (signed-out) browsing showed the Promoted label and top placement.
 - **No payment/billing** introduced (contest scope). No new third-party tools, Powers, MCP, or custom agents this stage.
+
+## Stage 5 — polish, seed, deploy prep, demo + writeup prep (2026-11-01)
+
+- **Kiro IDE** — Swept the whole app for placeholder text, dead buttons, broken links, and mobile-layout breaks; fixed only what the sweep found (dead Share/Report controls → working ShareButton / removed; dead home search input removed; seed placeholder URL nulled). Ran the gates after fixes (57 tests, typecheck, build all green).
+- **Steering (design tokens)** — The polish stayed inside the locked palette (navy link / neutral), no new color, no texture swatch.
+- **Deploy** — Vercel is not linked on this machine; stopped and reported the exact steps rather than guessing (no key printed).
+- **Prep deliverables** — `DEMO_PLAN.md` (sub-3:00 shot list) and `WRITEUP_DRAFT.md` (built from this log) prepared. Writeup names Kiro features used, names ChatGPT discrete help (scan fix) honestly, states Kilo unused, states the Figma-before/code-inside timeline, and names Resurrection + Best Student Project.
+- **No new third-party tools, Powers, MCP, or custom agents** this stage.

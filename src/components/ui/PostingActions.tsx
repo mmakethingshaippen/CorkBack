@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { HeartIcon, ShareIcon } from "@/components/icons";
 import { SignInToTakePart } from "./SignInToTakePart";
+import { ShareButton } from "./ShareButton";
 
 /**
  * Like + plan + share controls for a posting page.
@@ -52,9 +53,7 @@ export function PostingActions({
         >
           <HeartIcon /> {likes}
         </button>
-        <button className="inline-flex items-center gap-1 rounded-control border border-board px-3 py-2 text-ink">
-          <ShareIcon /> Share
-        </button>
+        <ShareButton variant="button" />
       </div>
 
       <div>
