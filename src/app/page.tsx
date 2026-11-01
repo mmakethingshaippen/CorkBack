@@ -1,0 +1,125 @@
+import Link from "next/link";
+import { TopBar } from "@/components/ui/TopBar";
+import { CorkBand } from "@/components/ui/CorkBand";
+import { BottomNav } from "@/components/ui/BottomNav";
+import { PostingCard } from "@/components/ui/PostingCard";
+import { MapView } from "@/components/map/MapView";
+import { SearchIcon } from "@/components/icons";
+import { listActivePostings } from "@/lib/postings";
+import { tiltFor } from "@/components/ui/Card";
+import { getViewer } from "@/lib/auth";
+import { UserRoundIcon } from "@/components/icons";
+
+// Public home: map + posting rails. No account wall for browsing.
+export default async function Home() {
+  // The viewer lookup and postings load are independent; don't let a postings
+  // failure blank the whole page. Load the viewer first, then try postings and
+  // surface a readable banner if that specific query fails.
+  const viewer = await getViewer();
+
+  let postings: Awaited<ReturnType<typeof listActivePostings>> = [];
+  let loadError: string | null = null;
+  try {
+    postings = await listActivePostings();
+  } catch (e) {
+    loadError = e instanceof Error ? e.message : "Could not load postings.";
+  }
+
+  // Pre-compute tilts so adjacent cards never mirror (Choice B).
+  let prev: number | null = null;
+  const withTilt = postings.map((p) => {
+    const t = tiltFor(p.id, prev);
+    const entry = { posting: p, prevTilt: prev };
+    prev = t;
+    return entry;
+  });
+
+  return (
+    <main className="min-h-screen pb-24">
+      <TopBar
+        right={
+          viewer ? (
+            <span
+              className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-deep-navy bg-white text-deep-navy"
+              aria-label={viewer.username ? `@${viewer.username}` : "Your profile"}
+            >
+              <UserRoundIcon />
+            </span>
+          ) : undefined
+        }
+      />
+
+      {/* Cork header band (Choice A: cork only on header bands / empty states). */}
+      <div className="px-4">
+        <CorkBand>
+          {viewer ? (
+            <p className="mb-2 text-sm font-bold text-paper">
+              You&apos;re on the board{viewer.username ? `, @${viewer.username}` : ""}.
+            </p>
+          ) : null}
+          <h1 className="text-2xl font-bold text-paper">The world, posted locally.</h1>
+          <p className="mt-1 text-paper/90">Paper flyers. Real places. What&apos;s happening around you.</p>
+        </CorkBand>
+      </div>
+
+      {/* Search + actions */}
+      <div className="space-y-3 px-4 pt-4">
+        <label className="flex items-center gap-2 rounded-control border-2 border-deep-navy bg-white px-3 py-2">
+          <SearchIcon className="text-deep-navy" />
+          <input
+            className="w-full bg-transparent text-ink outline-none"
+            placeholder="Search any town worldwide"
+            aria-label="Search any town worldwide"
+          />
+        </label>
+        <div className="flex gap-3">
+          {/* One dark-red main action per screen: Scan a flyer. */}
+          <Link
+            href="/scan"
+            className="flex-1 rounded-control bg-dark-red px-5 py-3 text-center font-bold text-white"
+          >
+            Scan a flyer
+          </Link>
+          {/* Secondary action: navy. */}
+          <Link
+            href="/alerts"
+            className="flex-1 rounded-control bg-deep-navy px-5 py-3 text-center font-bold text-white"
+          >
+            Set an alert
+          </Link>
+        </div>
+      </div>
+
+      {/* Interactive map */}
+      <section className="px-4 pt-6">
+        <h2 className="mb-2 text-sm font-bold text-ink/70">Near you, London</h2>
+        <div className="h-64 overflow-hidden rounded-card border border-board">
+          <MapView postings={postings} />
+        </div>
+      </section>
+
+      {/* Posting rail */}
+      <section className="px-4 pt-6">
+        <h2 className="mb-3 text-lg font-bold text-ink">On your doorstep</h2>
+        {loadError ? (
+          <div className="rounded-card border border-dark-red/40 bg-dark-red/5 p-4">
+            <p className="font-bold text-dark-red">Postings couldn&apos;t be loaded.</p>
+            <p className="mt-1 text-sm text-ink/80">{loadError}</p>
+          </div>
+        ) : withTilt.length === 0 ? (
+          <CorkBand>
+            <p className="text-paper">Nothing posted nearby yet. Be the first — scan a flyer.</p>
+          </CorkBand>
+        ) : (
+          <div className="grid gap-4">
+            {withTilt.map(({ posting, prevTilt }) => (
+              <PostingCard key={posting.id} posting={posting} tiltId={posting.id} prevTilt={prevTilt} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <BottomNav />
+    </main>
+  );
+}

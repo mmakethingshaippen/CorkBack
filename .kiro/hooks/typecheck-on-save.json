@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Typecheck on TS save",
+      "trigger": "PostFileSave",
+      "description": "Runs the TypeScript type checker whenever a .ts/.tsx file is saved, to catch type regressions early during the build.",
+      "matcher": "\\.(ts|tsx)$",
+      "action": {
+        "type": "command",
+        "command": "npm run typecheck"
+      }
+    }
+  ]
+}

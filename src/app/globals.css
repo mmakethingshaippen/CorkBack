@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * CorkBack design tokens as CSS custom properties.
+ * Mirror of tailwind.config.ts — the steering doc is the source of truth.
+ */
+:root {
+  --paper: #fffdf8;
+  --card: #ffffff;
+  --board: #e5ddcc;
+  --ink: #1e1e1c;
+  --dark-red: #8c2b1f;
+  --deep-navy: #1f2e4d;
+}
+
+body {
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-kalam), cursive;
+}
+
+/*
+ * Procedural cork texture — generated in CSS, no image asset, no licensing question.
+ * Choice A: cork appears ONLY on header bands and empty states. Apply .cork-band deliberately;
+ * it is never the global background (that stays Paper).
+ */
+.cork-band {
+  background-color: #b07a4e;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(90, 54, 28, 0.35) 0 1.2px, transparent 2px),
+    radial-gradient(circle at 70% 60%, rgba(60, 36, 18, 0.3) 0 1.4px, transparent 2px),
+    radial-gradient(circle at 45% 80%, rgba(120, 78, 46, 0.4) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 85% 20%, rgba(70, 42, 20, 0.28) 0 1.3px, transparent 2px),
+    radial-gradient(circle at 10% 70%, rgba(130, 86, 52, 0.3) 0 1px, transparent 1.6px);
+  background-size: 37px 37px, 53px 53px, 29px 29px, 61px 61px, 43px 43px;
+}
