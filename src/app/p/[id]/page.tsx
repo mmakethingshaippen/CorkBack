@@ -9,7 +9,8 @@ import { NavyLink } from "@/components/ui/actions";
 import { CalendarIcon, ClockIcon, MapPinIcon, ExternalLinkIcon } from "@/components/icons";
 import { categoryLabel } from "@/lib/categories";
 import { getPosting } from "@/lib/postings";
-import { isSignedIn } from "@/lib/auth";
+import { getViewer } from "@/lib/auth";
+import { MessagePoster } from "@/components/ui/MessagePoster";
 
 export default async function PostingPage({
   params,
@@ -17,8 +18,10 @@ export default async function PostingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [posting, signedIn] = await Promise.all([getPosting(id), isSignedIn()]);
+  const [posting, viewer] = await Promise.all([getPosting(id), getViewer()]);
   if (!posting) notFound();
+  const signedIn = viewer !== null;
+  const isOwnPosting = viewer?.username === posting.authorUsername;
 
   const dateLabel = posting.eventDate
     ? new Date(posting.eventDate).toLocaleDateString(undefined, {
@@ -90,6 +93,14 @@ export default async function PostingPage({
           <p className="mt-2 text-sm text-ink/70">
             Follow is instant and one-way. Connect sends a friend request. (Social features ship in a later stage.)
           </p>
+          <div className="mt-3">
+            <MessagePoster
+              posterUsername={posting.authorUsername}
+              postingId={posting.id}
+              signedIn={signedIn}
+              isOwnPosting={isOwnPosting}
+            />
+          </div>
         </div>
 
         {/* Replies: public comments. No like on replies (locked). */}

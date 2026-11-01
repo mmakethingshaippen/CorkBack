@@ -101,3 +101,36 @@ RESEND_API_KEY added to `.env.local` (present, len 36; never printed). `stage2_a
 - **Acceptance: PASSED** — create alert ✓, matching posting emails once ✓, non-matching posting sends nothing ✓, re-run sends no duplicate ✓. Email contains title/date/time/place + posting link; alert home point/radius and user email never included.
 - **Final gates:** `npm run typecheck` ✓, `npm test` ✓ (41/41), `npm run build` ✓.
 - **Note:** for production, verify a real sending domain in Resend and set `ALERTS_FROM_EMAIL` to an address on it (and `NEXT_PUBLIC_APP_URL` to the deployed URL for correct email links).
+
+## 2026-11-01 — Kiro — Commit 74004f5 file audit (precondition for Stage 3)
+
+Asked to name the "third file" in commit 74004f5. Verified with `git diff-tree --name-status -r 74004f5` and `git show --name-only`: the commit contains **exactly two files**, both modified — `BUILD_LOG.md` and `KIRO_USAGE_LOG.md`. There is no third file (no add/rename/delete, file count = 2). The earlier report naming only those two was accurate. No secret is involved because no other file exists in the commit. (The large multi-file Stage 2 code commit was the earlier 2f13bf1; `.env.local` is gitignored and was never committed.)
+
+## 2026-11-01 — Kiro — Stage 3: private messaging (code complete; live blocked on migration)
+
+Built messaging only. No promoted postings. No changes to alerts/scan/map/auth/profiles, no posting-table changes, public replies untouched, no Like on messages/replies, Follow/Connect untouched, no group threads/attachments/email notices.
+
+- **Schema (`supabase/stage3_messaging.sql`, additive/idempotent):** `message_threads` (1:1, ordered pair `user_lo < user_hi`, optional `posting_id`, unique per pair+posting) and `messages` (thread_id, sender_id, body). RLS is PARTICIPANT-ONLY: a user may read/insert a thread or its messages only if they are one of the two participants; messages immutable (no update/delete/Like); a third user has no grant → denied by default.
+- **Domain (`src/lib/messaging.ts`, pure/tested):** orderedPair, isParticipant, counterpart, canAccessThread, validateMessageBody.
+- **API:** `POST/GET /api/messages` (start-or-find thread + send; fetch thread messages), `POST /api/messages/reply` (reply by threadId, participant-checked), `GET /api/messages/threads` (inbox list, own threads only). Recipient resolved by username so user ids stay off the public posting page.
+- **UI:** `MessagePoster` on the posting page (signed-in only, hidden on own posting, message text never shown on the page/board); `/inbox` (own threads only) and `/inbox/[id]` (thread + reply, non-participant → notFound).
+- **Checks:** `npm run typecheck` ✓, `npm test` ✓ (50/50 — added 9 messaging tests: participant-only access, third user blocked, public browsing unchanged, pairing, body validation), `npm run build` ✓ (fixed a react-hooks/exhaustive-deps warning in ThreadView; one transient OneDrive `.next` lock cleared by removing `.next`).
+- **LIVE VERIFICATION BLOCKED:** `stage3_messaging.sql` is NOT yet applied — the `message_threads`/`messages` tables do not exist (confirmed via the service role). I cannot run DDL with the REST service-role key, and there is no direct Postgres URL in `.env.local`. The two-account send/reply + third-user-blocked live test needs the migration applied in the Supabase SQL editor (same as Stage 1/2 migrations).
+- **NOT COMMITTED** — per the rule "commit only if all checks pass," the required live verification is incomplete, so no Stage 3 commit was made. Code is staged-ready and awaiting the migration + live test.
+- **To finish:** apply `supabase/stage3_messaging.sql` in Supabase, then run the live two-account test on one dev server, then commit.
+
+## 2026-11-01 — Kiro — Stage 3 live verification: PASSED
+
+Migration `stage3_messaging.sql` applied (tables `message_threads` + `messages` confirmed present via service role). One dev server only (:3200); `.next` cleared first; no other server running.
+
+- **Scenario (3 real accounts A/B/C, driven through the running API with real @supabase/ssr auth cookies):**
+  - Account A posted a posting.
+  - Account B sent a private message from that posting page → `200`, thread created.
+  - Account A read the thread (saw B's message) and replied in the inbox → both `200`.
+  - Account B re-read → saw both messages (count 2). Both A and B inboxes contain the thread.
+  - **Third account C blocked:** reading the thread returned 0 messages (RLS hides), replying returned **403**, and C's inbox did **not** contain the thread.
+  - **Public browsing unchanged:** the posting page loaded (200) for an unauthenticated request and contained **no message text** (checked for both the message and the reply strings).
+  - Result object: `{b_send:200, a_read:200/1, a_reply:200, b_read:200/2, c_sees:0, c_reply:403, c_inbox_has_thread:false, a_inbox:true, b_inbox:true, public_has_message_text:false}`.
+- **Test-harness fix (one fix, not app code):** the first run returned 401 on every call because the harness built the wrong auth-cookie format. Fixed to the `@supabase/ssr` format (`sb-<ref>-auth-token = base64-<base64(session JSON)>`); re-run passed. No application code changed for this.
+- **Cleanup:** removed 3 test users (+ profiles), their thread and messages, and A's posting. Independent recount: residual test postings 0, test profiles 0, test auth users 0; total threads 0, total messages 0. Throwaway harness deleted.
+- **Gates after the only code change this stage (the ThreadView exhaustive-deps warning fix from the build step):** `npm run typecheck` ✓, `npm test` ✓ (50/50), `npm run build` ✓ (no warnings).
