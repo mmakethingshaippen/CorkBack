@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "./supabase/server";
 import { isActive } from "./domain";
+import { orderWithPromoted } from "./promotion";
 import type { Posting } from "./types";
 import { SEED_POSTINGS, findSeedPosting } from "./seed";
 import type { PostgrestError } from "@supabase/supabase-js";
@@ -72,9 +73,10 @@ function rowToPosting(r: Record<string, unknown>): Posting {
 /** Active (non-expired, non-deleted, event-not-past) postings for the map. */
 export async function listActivePostings(now = new Date()): Promise<Posting[]> {
   if (!supabaseConfigured()) {
-    return SEED_POSTINGS.filter((p) =>
+    const activeSeed = SEED_POSTINGS.filter((p) =>
       isActive(now, new Date(p.expiresAt), p.eventDate ? new Date(p.eventDate) : null, null),
     );
+    return orderWithPromoted(activeSeed);
   }
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -88,11 +90,12 @@ export async function listActivePostings(now = new Date()): Promise<Posting[]> {
     .is("deleted_at", null)
     .gt("expires_at", now.toISOString());
   if (error) throw toReadableError("listActivePostings", error);
-  return (data ?? [])
+  const active = (data ?? [])
     .map((r) => rowToPosting(r as Record<string, unknown>))
     .filter((p) =>
       isActive(now, new Date(p.expiresAt), p.eventDate ? new Date(p.eventDate) : null, null),
     );
+  return orderWithPromoted(active);
 }
 
 export async function getPosting(id: string, now = new Date()): Promise<Posting | null> {

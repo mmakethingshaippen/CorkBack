@@ -55,3 +55,11 @@ The final writeup is built from this log, not from memory.
 - **Supabase (Postgres + RLS + Auth) — verified live.** Three real accounts proved the participant-only guarantee end to end: both participants read and replied; a third account got 0 messages, a 403 on reply, and no thread in its inbox. Public browsing of the posting page (unauthenticated) showed no message text. RLS on `message_threads`/`messages` is the enforcement; the pure helpers mirror it.
 - **Kiro IDE** — Drove the live scenario through the running dev server's API with real auth sessions, ran the gates, and performed cleanup. One test-harness fix (correct @supabase/ssr cookie format); no application code changed for the live test. The only app code change this stage was a lint-warning fix in ThreadView, after which typecheck/tests/build were re-run green.
 - **No real user emailed or touched:** all test users were throwaway (msgtest_*) and fully removed after the run.
+
+## Stage 4 — promoted postings (2026-11-01)
+
+- **Specs/steering** — Reused the day-one `is_promoted` field (set in the Stage 1 data model) instead of adding a column, honoring "extend only if a field is missing." The locked design-tokens steering kept the label and owner control to existing tokens (deep navy / neutral), no new color.
+- **Kiro IDE** — Wrote the pure placement logic, the owner-only promote API, the owner UI control, and wired promoted-first ordering into the postings read path; ran the gates and the live two-account test.
+- **Unit testing (vitest)** — Added `src/lib/promotion.test.ts` (7). Encoding placement as a pure, group-local stable sort let the "promoted first in same area+category / ordinary order unchanged / no cross-area or cross-category leapfrog / ends at expiry" rules be tested deterministically without a DB. Promotion's no-effect on alerts is also covered by the existing alert matcher ignoring `is_promoted`.
+- **Supabase RLS — verified live.** Owner-only promotion proven: a non-owner got 403, the owner succeeded, and removal reverted the flag. Public (signed-out) browsing showed the Promoted label and top placement.
+- **No payment/billing** introduced (contest scope). No new third-party tools, Powers, MCP, or custom agents this stage.

@@ -11,6 +11,7 @@ import { categoryLabel } from "@/lib/categories";
 import { getPosting } from "@/lib/postings";
 import { getViewer } from "@/lib/auth";
 import { MessagePoster } from "@/components/ui/MessagePoster";
+import { PromoteToggle } from "@/components/ui/PromoteToggle";
 
 export default async function PostingPage({
   params,
@@ -101,6 +102,12 @@ export default async function PostingPage({
               isOwnPosting={isOwnPosting}
             />
           </div>
+          {/* Owner-only promotion control. */}
+          {isOwnPosting ? (
+            <div className="mt-3">
+              <PromoteToggle postingId={posting.id} initialPromoted={posting.isPromoted} />
+            </div>
+          ) : null}
         </div>
 
         {/* Replies: public comments. No like on replies (locked). */}

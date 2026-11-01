@@ -134,3 +134,23 @@ Migration `stage3_messaging.sql` applied (tables `message_threads` + `messages` 
 - **Test-harness fix (one fix, not app code):** the first run returned 401 on every call because the harness built the wrong auth-cookie format. Fixed to the `@supabase/ssr` format (`sb-<ref>-auth-token = base64-<base64(session JSON)>`); re-run passed. No application code changed for this.
 - **Cleanup:** removed 3 test users (+ profiles), their thread and messages, and A's posting. Independent recount: residual test postings 0, test profiles 0, test auth users 0; total threads 0, total messages 0. Throwaway harness deleted.
 - **Gates after the only code change this stage (the ThreadView exhaustive-deps warning fix from the build step):** `npm run typecheck` ✓, `npm test` ✓ (50/50), `npm run build` ✓ (no warnings).
+
+## 2026-11-01 — Kiro — Stage 4: promoted postings (label + placement only)
+
+Built promotion only. No polish/seed/demo/writeup, no other feature. No changes to messaging/alerts/scan/map/auth/profiles, no messaging-table/alert-sweep/scan-route changes. No payment, Stripe, checkout, billing, or price — label + placement only.
+
+- **Schema:** NONE needed. The `postings` table already has `is_promoted boolean not null default false` (added day-one in Stage 1, confirmed present live). No `stage4_promoted.sql` written. Used the existing field.
+- **Ownership:** `POST /api/postings/promote` sets/clears `is_promoted` on the caller's OWN live posting only. A non-owner is blocked (RLS `postings author update` + explicit 403). Refuses to promote a deleted or expired posting.
+- **Lifetime:** promotion is effective only while the posting is live — `listActivePostings` only returns active (non-expired, non-deleted, event-not-past) postings, so an expired/deleted posting never appears promoted. `isEffectivelyPromoted(flag, active)` encodes this.
+- **Placement:** `src/lib/promotion.ts` `orderWithPromoted` does a STABLE, group-local sort — within each (area, category) group a promoted posting sorts ahead of ordinary peers; group order and ordinary relative order are otherwise unchanged. Area = coarse ~0.1° bucket so a promoted posting does not leapfrog a different area or category. Applied in `listActivePostings` (both the Supabase and seed paths).
+- **Label (public, no account):** already shown on the board rail and map-list card (`PostingCard`) and on the posting page (`/p/[id]`) — both render server-side with no auth gate.
+- **Owner control UI:** `PromoteToggle` on the posting page, shown only to the owner (`isOwnPosting`), deep-navy action + neutral removal — existing tokens only, no new color, no texture swatch.
+- **No alert effect:** promotion does not call the alert sweep or change matching; the alert sweep and `src/lib/alerts.ts` are untouched. A test asserts promotion alone produces no alert email (match logic ignores `is_promoted`).
+- **Tests (57 total, 5 files):** added `src/lib/promotion.test.ts` (7) — promoted first in same area+category, ordinary order unchanged, no leapfrog across category, no leapfrog across area, group-local promotion, promotion effective only while live (expiry ends it), area bucketing. `npm run typecheck` ✓, `npm test` ✓ (57/57), `npm run build` ✓ (no warnings).
+- **Live verification (one dev server :3200; .next cleared; no other server):** two accounts A/B, ordinary posting created BEFORE the promoted one so default order would rank it first.
+  - B (non-owner) promote attempt → **403**. A (owner) promote → **200**; `is_promoted` true on the promoted posting, false on the ordinary.
+  - Public home (signed OUT): 200, **Promoted label present**, promoted posting appears **before** the ordinary one (`promo_before_ordinary_public=true`).
+  - Posting page (signed out): promoted page has the label, ordinary page has **no** label.
+  - B signed-IN home: label present, promoted-before-ordinary true (same server-rendered list).
+  - Owner A removed promotion → 200, `is_promoted` back to false.
+  - Cleanup: 2 test users + profiles + both postings removed; independent recount residual postings/profiles/authUsers all 0. Throwaway harness deleted.
