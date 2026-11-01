@@ -87,3 +87,17 @@ Main builder & reviewer: Kiro. Built Stage 2 only — no messaging, no promoted 
   - sweep with the correct `CRON_SECRET` → **501 "RESEND_API_KEY is not configured"** — the guard fires before any email is attempted, so no email is sent to anyone. ✓
   - **BLOCKED (not done):** the full live email acceptance — create a test alert, publish a matching posting, confirm the email in Resend logs/test inbox, then publish a non-matching posting and confirm no email — because `RESEND_API_KEY` is absent. This is the one remaining Stage 2 acceptance item and it is blocked solely on that key.
 - **To finish live verification:** add `RESEND_API_KEY` (and optionally `ALERTS_FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`) to `.env.local`, apply `supabase/stage2_alerts.sql`, restart one server, then run the match/no-match email test.
+
+## 2026-11-01 — Kiro — Stage 2 live email acceptance: PASSED
+
+RESEND_API_KEY added to `.env.local` (present, len 36; never printed). `stage2_alerts.sql` applied by Max. One dev server only (:3200) after stopping/killing a stray `node` on :3000 and clearing an OneDrive `.next` EBUSY lock once.
+
+- **From-address fix (env only, no code change):** the first live sweep returned `sent=0` with a single error — Resend rejected the default `alerts@corkback.app` From domain ("domain is not verified"). The code already reads `ALERTS_FROM_EMAIL`; added `ALERTS_FROM_EMAIL=onboarding@resend.dev` (Resend's sanctioned test sender) to `.env.local` and restarted one server. No application code changed.
+- **Test method:** seeded a throwaway alert owner using Resend's safe recipient `delivered@resend.dev` (no real inbox) so no email went to a real user; the real account was the *poster* (owner ≠ poster → no self-notify). Alert = music / central London / 5 mi. Matching posting = music ~1 mi away. Non-matching posting = sports (wrong category), same location. Verified via the sweep result and the `sent_alerts` ledger (ground truth). Test data and the throwaway script were deleted after the run.
+- **Results (live):**
+  - Fresh sweep after clearing the ledger: **`sent=1, skipped=0, errcount=0`** — exactly one email accepted by Resend for the MATCH posting.
+  - `sent_alerts` ledger: MATCH = 1 row, NOMATCH = 0 rows — the wrong-category posting produced no email.
+  - Repeat sweep (no change): **`sent=0, skipped=1, errcount=0`** — no duplicate email; the already-sent pair was skipped.
+- **Acceptance: PASSED** — create alert ✓, matching posting emails once ✓, non-matching posting sends nothing ✓, re-run sends no duplicate ✓. Email contains title/date/time/place + posting link; alert home point/radius and user email never included.
+- **Final gates:** `npm run typecheck` ✓, `npm test` ✓ (41/41), `npm run build` ✓.
+- **Note:** for production, verify a real sending domain in Resend and set `ALERTS_FROM_EMAIL` to an address on it (and `NEXT_PUBLIC_APP_URL` to the deployed URL for correct email links).

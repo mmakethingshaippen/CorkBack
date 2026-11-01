@@ -35,3 +35,9 @@ The final writeup is built from this log, not from memory.
 - **Unit testing (vitest)** — Added `src/lib/alerts.test.ts` with the four required cases (match inside radius, no email outside radius, no email for a different category, no duplicate across repeated sweeps) plus owner/hidden/expired/past-event/whole-town. Writing the matcher as a pure function first (same approach as Stage 1's domain rules) kept the sweep thin and the rules testable without a DB or a live email.
 - **Third-party tools introduced this stage:** Resend (transactional email, server-side only) and the free OpenStreetMap Nominatim geocoder (town name → center, no key). MapLibre/Supabase/Gemini unchanged. No new Kiro Powers/MCP/custom agents were needed this stage.
 - **Discrete external help:** none this stage (ChatGPT's discrete help was limited to the earlier scan fix, already logged).
+
+### Stage 2 live email acceptance (2026-11-01)
+
+- **Resend (email) — verified live.** A matching posting sent exactly one email (Resend accepted, `sent=1`), a wrong-category posting sent none, and a repeat sweep sent no duplicate (`sent=0, skipped=1`). Used Resend's safe `delivered@resend.dev` recipient and `onboarding@resend.dev` sender for the test so no real user was emailed. Keys read from `.env.local` only and never logged.
+- **Supabase service role + CRON** — the sweep ran via the CRON_SECRET-guarded route using the service role to match across users and write the `sent_alerts` dedupe ledger.
+- **Env-only fix** — the single issue found live (unverified From domain) was resolved by setting `ALERTS_FROM_EMAIL`, with no application code change — the code already read that variable.
