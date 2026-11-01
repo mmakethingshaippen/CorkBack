@@ -59,3 +59,12 @@ Kilo entries are labeled "Kilo discrete fix" with the file changed and the reaso
 - **Plain-line handling:** the app still *enforces* JSON via `responseMimeType: application/json` and a strengthened prompt. Because AI Studio showed this model can emit plain lines in free-form mode, I added a `parsePlainLines()` fallback used only if `JSON.parse` fails (maps title/date/time/place/category lines to the ExtractedFlyer shape). Added a scan test covering the AI-Studio-style plain-line response. This answers the "handle plain lines OR enforce JSON" question with both: JSON primary, plain-line salvage as a safety net.
 - **Scope confirmed:** only scan files + scan tests changed (route.ts, route.test.ts; the earlier scan-flow client ScanCapture.tsx from the prior fix). No git repo existed, so scope was confirmed by file inspection and modified-time grouping.
 - **Verification:** `npm run typecheck` ✓, `npm test` ✓ (32/32), `npm run build` ✓. One server restarted (prod `next start` :3100). One live scan of the same cropped JPG → HTTP 200 in ~1.9s, returning title "An evening of quiet sounds", date 2026-11-13, time 19:30, place "UNION CHAPEL, LONDON N1 2UN", category music. Review form reads exactly these fields (title/eventDate/eventTime/placeLabel), so the review screen shows title, date, time, and place.
+
+## 2026-11-01 — Kiro — Correction: Stage 1 live verification & scan test labeling (per Max)
+
+Correcting the record. Stage 1 is verified live on the dev server (reported by Max):
+
+- **Gate test (the scan acceptance test):** the cropped **pickleball** JPG, scanned on the **dev server**. This is the official scan gate test and it PASSED (returned title, date, time, place, category).
+- **Publish check:** PASSED on the dev server (per Max).
+- **Separate earlier test (NOT the gate):** the "own flyer" scan that returned the **Union Chapel** result ("An evening of quiet sounds", 2026-11-13, 19:30, Union Chapel). This was a separate developer test on a prod `next start` server, not the acceptance gate. The prior log entry that showed the Union Chapel result was that separate test, not the gate.
+- **Test flyers are out of the repo:** confirmed no image/flyer files are tracked (`git ls-files` shows none) and none sit in the working tree outside node_modules/.next. Test flyers were always generated into the OS temp dir; generator scripts were deleted. Nothing to remove.
