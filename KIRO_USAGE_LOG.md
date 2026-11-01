@@ -27,3 +27,11 @@ The final writeup is built from this log, not from memory.
 - **Steering docs** — The always-on steering (tokens, account model, location rules, Follow/Connect independence) was the single source of truth for every component's colors, the one-dark-red-action rule, Choice A/B, and the Like-postings-only lock.
 - **Kiro IDE tool** — Used throughout to scaffold, edit, run the build/tests, and verify the running app locally. (Only Kiro IDE used so far; Kiro CLI/Web/Crew not used this stage.)
 - **Web search** — Used to confirm the patched Next.js version for CVE-2025-66478 before pinning dependencies.
+
+## Stage 2 — radius email alerts (2026-11-01)
+
+- **Specs/steering** — Stage 2 built against the day-one data model and the locked steering: the always-on `location-rules` (radius 1–25 miles or whole town; exact location private) and `account-model` (email private, alerts require sign-in) drove the alert fields and privacy rules directly.
+- **Kiro IDE** — Used to extend the schema, write the pure matching logic, the Resend integration, the CRON-guarded sweep, and the alerts screen; and to run typecheck/tests/build and the live route checks.
+- **Unit testing (vitest)** — Added `src/lib/alerts.test.ts` with the four required cases (match inside radius, no email outside radius, no email for a different category, no duplicate across repeated sweeps) plus owner/hidden/expired/past-event/whole-town. Writing the matcher as a pure function first (same approach as Stage 1's domain rules) kept the sweep thin and the rules testable without a DB or a live email.
+- **Third-party tools introduced this stage:** Resend (transactional email, server-side only) and the free OpenStreetMap Nominatim geocoder (town name → center, no key). MapLibre/Supabase/Gemini unchanged. No new Kiro Powers/MCP/custom agents were needed this stage.
+- **Discrete external help:** none this stage (ChatGPT's discrete help was limited to the earlier scan fix, already logged).

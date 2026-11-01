@@ -21,6 +21,7 @@
     "next": "15.1.9",
     "react": "19.0.3",
     "react-dom": "19.0.3",
+    "resend": "^4.0.1",
     "server-only": "^0.0.1"
   },
   "devDependencies": {

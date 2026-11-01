@@ -68,3 +68,22 @@ Correcting the record. Stage 1 is verified live on the dev server (reported by M
 - **Publish check:** PASSED on the dev server (per Max).
 - **Separate earlier test (NOT the gate):** the "own flyer" scan that returned the **Union Chapel** result ("An evening of quiet sounds", 2026-11-13, 19:30, Union Chapel). This was a separate developer test on a prod `next start` server, not the acceptance gate. The prior log entry that showed the Union Chapel result was that separate test, not the gate.
 - **Test flyers are out of the repo:** confirmed no image/flyer files are tracked (`git ls-files` shows none) and none sit in the working tree outside node_modules/.next. Test flyers were always generated into the OS temp dir; generator scripts were deleted. Nothing to remove.
+
+## 2026-11-01 — Kiro — Stage 2: radius email alerts
+
+Main builder & reviewer: Kiro. Built Stage 2 only — no messaging, no promoted postings, no Stage 1 rebuild.
+
+- **Keys checked first (presence only, never printed):** from `.env.local` — `CRON_SECRET` present, `GEMINI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY`/`NEXT_PUBLIC_SUPABASE_URL` present. **`RESEND_API_KEY` is MISSING.** Per instruction, I did not guess, invent, or send any test email.
+- **Alert fields:** one category (`category_id`), one home point (`center_lat`/`center_lng`, optional `town_name` label; a town name is geocoded to a center via free OSM Nominatim, or "use my current location" sets a map point), one radius (`radius_miles` 1–25, or NULL = whole town). Users can create multiple alerts. Home point and radius are private — shown only to the owner on `/alerts`, never on the board, a posting page, or in any email. User email stays private.
+- **Schema:** extended the EXISTING `alerts` table via `supabase/stage2_alerts.sql` (additive, idempotent): added `town_name`, relaxed the radius check to allow NULL (whole town). Added a new `sent_alerts (alert_id, posting_id)` dedupe ledger with RLS (owner read; writes via service role). No change to auth, profiles, map, scan, or posting tables.
+- **Matching (`src/lib/alerts.ts`, pure/testable):** a posting matches when same category, inside radius, active (not expired/past-event/deleted), not hidden by the owner, and NOT the owner's own posting. Whole-town uses a 25-mile cap for matching (never shown to anyone).
+- **Email (`src/lib/email.ts`, Resend, server only):** email contains posting title, date, time, place, and a link to the posting page — nothing about the alert's location/radius or any other user's email. `RESEND_API_KEY` read server-side only, never logged.
+- **Sweep (`/api/cron/alerts`, CRON_SECRET-guarded):** service-role read of active postings + all alerts, matches, dedupes against `sent_alerts`, sends one email per new (alert, posting) pair, records it. Cron added to `vercel.json` (every 15 min).
+- **Screen (`/alerts`):** signed-in users create/list/delete alerts (no edit flow). Visitors see the sign-in gate. "Set an alert" stays deep navy (secondary); tokens/Kalam/Paper panels/2px navy fields unchanged; no Figma texture swatch.
+- **Tests (41 total, 3 files):** added `src/lib/alerts.test.ts` (9) — match inside radius, NO email outside radius, NO email for a different category, NO duplicate when the sweep runs again, plus owner/hidden/expired/past-event/whole-town. typecheck ✓, tests ✓ (41/41), build ✓ (`/alerts`, `/api/alerts`, `/api/cron/alerts` present).
+- **Live verification (one dev server, :3001; `.env.local` loaded):**
+  - `/api/alerts` unauthenticated → 401 (alerts need sign-in; public browsing unchanged). ✓
+  - sweep with wrong secret → 401. ✓
+  - sweep with the correct `CRON_SECRET` → **501 "RESEND_API_KEY is not configured"** — the guard fires before any email is attempted, so no email is sent to anyone. ✓
+  - **BLOCKED (not done):** the full live email acceptance — create a test alert, publish a matching posting, confirm the email in Resend logs/test inbox, then publish a non-matching posting and confirm no email — because `RESEND_API_KEY` is absent. This is the one remaining Stage 2 acceptance item and it is blocked solely on that key.
+- **To finish live verification:** add `RESEND_API_KEY` (and optionally `ALERTS_FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`) to `.env.local`, apply `supabase/stage2_alerts.sql`, restart one server, then run the match/no-match email test.
