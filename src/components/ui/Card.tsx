@@ -20,9 +20,13 @@ export function Card({
   className?: string;
 }) {
   const tilt = tiltId === null ? 0 : cardTilt(tiltId, prevTilt);
+  // A rotated card's corners extend past its layout box. Without clearance the
+  // rotated top edge can overlap the element above it (e.g. the map), reading
+  // as an empty white wedge. `my-3` gives tilted cards room so corners never
+  // collide with neighbours.
   return (
     <div
-      className={`rounded-card border border-board bg-card p-4 shadow-sm ${className}`}
+      className={`rounded-card border border-board bg-card p-4 shadow-sm ${tilt ? "my-3" : ""} ${className}`}
       style={tilt ? { transform: `rotate(${tilt}deg)` } : undefined}
     >
       {children}

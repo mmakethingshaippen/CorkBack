@@ -35,3 +35,6 @@ yarn-error.log*
 # IMPORTANT: .kiro is intentionally NOT ignored.
 # The 2026 rules require the .kiro directory (specs, steering, hooks) at the repo root.
 # Do not add .kiro or any of its subfolders here.
+
+.vercel
+.env*

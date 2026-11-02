@@ -24,6 +24,15 @@ export default async function Home() {
     loadError = e instanceof Error ? e.message : "Could not load postings.";
   }
 
+  // Map heading: match the map center and the real posting location rather than
+  // a hardcoded city. Derive it from the first posting's place label (the map
+  // centers on the first posting). No city is invented; with no postings we use
+  // a neutral heading.
+  const mapHeading =
+    postings.length > 0 && postings[0].placeLabel
+      ? `Near ${postings[0].placeLabel}`
+      : "Near you";
+
   // Pre-compute tilts so adjacent cards never mirror (Choice B).
   let prev: number | null = null;
   const withTilt = postings.map((p) => {
@@ -83,14 +92,14 @@ export default async function Home() {
 
       {/* Interactive map */}
       <section className="px-4 pt-6">
-        <h2 className="mb-2 text-sm font-bold text-ink/70">Near you, London</h2>
+        <h2 className="mb-2 text-sm font-bold text-ink/70">{mapHeading}</h2>
         <div className="h-64 overflow-hidden rounded-card border border-board">
           <MapView postings={postings} />
         </div>
       </section>
 
       {/* Posting rail */}
-      <section className="px-4 pt-6">
+      <section className="px-4 pt-8">
         <h2 className="mb-3 text-lg font-bold text-ink">On your doorstep</h2>
         {loadError ? (
           <div className="rounded-card border border-dark-red/40 bg-dark-red/5 p-4">

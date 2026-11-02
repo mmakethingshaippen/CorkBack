@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MapIcon, LayersIcon, ScanLineIcon, UsersIcon, BellIcon } from "@/components/icons";
+import { MapIcon, LayersIcon, ScanLineIcon, UsersIcon, BellIcon, MessageCircleIcon } from "@/components/icons";
 
 /**
- * Bottom navigation: Map · Following · Scan · Friends · Alerts, with Scan
- * centered and raised (dark-red circle) as the anchor action.
+ * Bottom navigation: Map · Following · Scan · Messages · Friends · Alerts, with
+ * Scan centered and raised (dark-red circle) as the anchor action. Messages
+ * links a signed-in user to their inbox (the inbox page gates signed-out users).
  */
 const items = [
   { href: "/", label: "Map", Icon: MapIcon },
   { href: "/following", label: "Following", Icon: LayersIcon },
   { href: "/scan", label: "Scan", Icon: ScanLineIcon, center: true },
+  { href: "/inbox", label: "Messages", Icon: MessageCircleIcon },
   { href: "/friends", label: "Friends", Icon: UsersIcon },
   { href: "/alerts", label: "Alerts", Icon: BellIcon },
 ];

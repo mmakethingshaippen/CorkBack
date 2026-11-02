@@ -38,7 +38,6 @@ Kiro tools used: **Kiro IDE** only. Kiro CLI, Kiro Web, and Kiro Crew were not u
 ## Discrete external help (named honestly)
 
 - **ChatGPT — discrete debugging help, scan fix only.** ChatGPT helped harden the scan route's error handling, timeout, and API-key redaction during the scan fix. Kiro was the main builder and reviewer; every change was reviewed and verified live by Kiro, and the change was recorded in `BUILD_LOG.md`.
-- **Kilo — not used.** No Kilo discrete fix was performed in this build; the build log records none. (The Kilo handoff protocol was available but not exercised.)
 
 ## Spec-driven vs. vibe-coding (from this build)
 

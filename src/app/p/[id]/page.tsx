@@ -52,6 +52,16 @@ export default async function PostingPage({
 
         <h1 className="text-3xl font-bold leading-tight text-ink">{posting.title}</h1>
 
+        {/* Flyer image, shown only when the posting has one. */}
+        {posting.flyerUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={posting.flyerUrl}
+            alt={`Flyer for ${posting.title}`}
+            className="w-full rounded-card border border-board"
+          />
+        ) : null}
+
         <dl className="space-y-1 text-ink">
           {dateLabel ? (
             <div className="flex items-center gap-2">
@@ -92,7 +102,7 @@ export default async function PostingPage({
             <PosterHandle username={posting.authorUsername} />
           </div>
           <p className="mt-2 text-sm text-ink/70">
-            Follow is instant and one-way. Connect sends a friend request. (Social features ship in a later stage.)
+            Follow and Connect are not part of this release.
           </p>
           <div className="mt-3">
             <MessagePoster

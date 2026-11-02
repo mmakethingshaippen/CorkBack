@@ -71,3 +71,11 @@ The final writeup is built from this log, not from memory.
 - **Deploy** — Vercel is not linked on this machine; stopped and reported the exact steps rather than guessing (no key printed).
 - **Prep deliverables** — `DEMO_PLAN.md` (sub-3:00 shot list) and `WRITEUP_DRAFT.md` (built from this log) prepared. Writeup names Kiro features used, names ChatGPT discrete help (scan fix) honestly, states Kilo unused, states the Figma-before/code-inside timeline, and names Resurrection + Best Student Project.
 - **No new third-party tools, Powers, MCP, or custom agents** this stage.
+
+## Stage 5 — live-findings fixes (2026-11-01)
+
+- **Kiro IDE** — Investigated each live finding against the live database before changing anything, then fixed: heading derived from real data, tilted-card clearance (empty-card artifact), flyer-image rendering gap, Messages nav link, and removed the misleading Follow/Connect "later stage" note (feature was never built; not rebuilt, since no new features this stage). Ran the signed-in live check and the gates.
+- **Writeup honesty** — Removed Kilo from the writeup entirely (did nothing, no code in repo); kept the ChatGPT discrete scan-fix note; Kiro remains main builder.
+- **Gemini** — Confirmed the code model id (`gemini-3.5-flash-lite`) matches the build log and verified one live scan on the deployed app returns title/date/time/place.
+- **Supabase (live) — verified** the real data for the one Berkeley posting (date/flyer/rsvp genuinely null) rather than inventing values; test users/posting created for the signed-in check were fully removed (zero residual).
+- No new third-party tools, Powers, MCP, or custom agents this stage.
