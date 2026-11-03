@@ -79,3 +79,11 @@ The final writeup is built from this log, not from memory.
 - **Gemini** — Confirmed the code model id (`gemini-3.5-flash-lite`) matches the build log and verified one live scan on the deployed app returns title/date/time/place.
 - **Supabase (live) — verified** the real data for the one Berkeley posting (date/flyer/rsvp genuinely null) rather than inventing values; test users/posting created for the signed-in check were fully removed (zero residual).
 - No new third-party tools, Powers, MCP, or custom agents this stage.
+
+## Nov 3 — signed-in defect fixes + live deploy (2026-11-03)
+
+- **Kiro IDE** — Diagnosed each signed-in defect from the live site, fixed the sign-up profile creation (service-role admin client, immune to the no-session-at-confirmation RLS block), the profile not-found state + real postings, the manual posting-form link, a global signed-in header with working sign out, and the sign-up email redirect to the live URL. Backfilled orphaned profiles, deployed to Vercel, and verified every fix live.
+- **Supabase (service role + Auth + RLS)** — Root-caused the FK failure to a missing profiles row (RLS blocked the session-less insert at sign-up); fixed with a service-role insert plus an optional DB-trigger backstop migration.
+- **Vercel** — Deployed production via the CLI; confirmed `NEXT_PUBLIC_APP_URL` is the live URL so confirmation emails point at the live site.
+- **No test data left behind** — all throwaway verification users/postings/alerts removed (0 residual); no real user emailed.
+- No new third-party tools, Powers, MCP, or custom agents.

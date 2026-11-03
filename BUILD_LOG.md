@@ -187,3 +187,36 @@ No new feature, no search built. Fixes verified on the local build against the L
 8. **Scan model:** code uses `gemini-3.5-flash-lite` (matches the build log). One live scan on the DEPLOYED app (https://corkback.vercel.app/api/scan/extract) returned HTTP 200 with title, date (2026-11-15), time (09:00), and place (CENTER STREET, BERKELEY CA). ✓
 - **Env note during runs:** cleared a OneDrive `.next` EBUSY lock once (environment issue, not a code defect); restarted one server.
 - **Gates:** typecheck ✓, tests ✓ (57/57), build ✓, no warnings.
+
+## 2026-11-03 — Kiro — Signed-in defects fixed + deployed (live: https://corkback.vercel.app)
+
+Fixed the five Nov-3 signed-in defects, deployed to production, and verified each on the live site. No test data left behind.
+
+**Files changed**
+- `src/app/api/auth/sign-up/route.ts` — create the profiles row with the service-role admin client at sign-up (works with email confirmation on, when the new user has no session so an RLS insert would be blocked); pass `username` as auth metadata; set `emailRedirectTo` to NEXT_PUBLIC_APP_URL / request origin (live URL).
+- `src/lib/supabase/server.ts` — added `createAdminClient()` (service-role, server-only).
+- `supabase/stage5_profile_trigger.sql` — NEW: `handle_new_user()` trigger on auth.users as a defense-in-depth backstop + backfill (optional; the route fix already works without it). Could not be applied from here (DDL needs the SQL editor); the route's admin insert makes it non-blocking.
+- `src/app/u/[username]/page.tsx` — query `profiles` by username; `notFound()` when absent; show the real username + the user's active postings.
+- `src/app/not-found.tsx` — NEW: themed 404 for unknown routes / notFound() (e.g. unknown username).
+- `src/lib/postings.ts` — added `getProfileByUsername()` and `listPostingsByUsername()`.
+- `src/app/scan/page.tsx` — added an "Enter posting details manually" link to the working review form; capture/choose already surface clear errors.
+- `src/app/scan/review/page.tsx` — copy now covers scan AND manual entry.
+- `src/components/ui/TopBar.tsx` — now async; renders `AuthControl` by default so every page shows session state.
+- `src/components/ui/AuthControl.tsx` — NEW: signed-in profile chip + working Sign out; signed-out Sign in.
+- `src/app/api/auth/sign-out/route.ts` — NEW: sign-out endpoint.
+- `src/app/page.tsx` — dropped the custom header `right` (TopBar handles it).
+
+**Data remediation (live):** 2 orphaned auth users from the Nov-3 failed sign-ups had no profile row — backfilled derived `user_xxxx` usernames via the admin client. After: 3 auth users, 0 missing profiles. The real `mculbeaux` account untouched.
+
+**Live verification (deployed site, each fix):**
+1. Sign-up via the deployed `/api/auth/sign-up`: 200, auth user created, **profile row created with matching username**, sign-in works, and **alert save → 200** (alerts.user_id FK no longer fails).
+2. Nonexistent username `/u/nobody_xyz_404` → **404** (themed not-found); real profile `/u/mculbeaux` → 200 with handle; a throwaway user's posting showed on their profile.
+3. `/scan` links to the manual form; `/scan/review` (signed-in) → 200, not the gate, shows "Make the details clear" + manual hint (the form is a client component).
+4. Signed-out header shows **Sign in** (no Sign out); signed-in header shows **Sign out** on every page.
+5. Vercel `NEXT_PUBLIC_APP_URL` confirmed = the live URL (not localhost); the sign-up route uses it for `emailRedirectTo`. NOTE: the email link base also depends on Supabase dashboard **Site URL / allowed redirect URLs** — set those to `https://corkback.vercel.app` if not already (dashboard setting, not in code).
+
+**Note on current data:** the real "Community Pickleball Social" posting is expired (expires_at 2026-11-02) and soft-deleted, so the live home/profile correctly show no active postings right now — not a regression. The profile-shows-postings path was verified with a throwaway active posting, then cleaned up.
+
+**Cleanup:** all throwaway verification users/postings/alerts removed; independent recount = 0 residual; harnesses deleted.
+
+**Gates:** `npm run typecheck` ✓, `npm test` ✓ (57/57), `npm run build` ✓. Deployed to production (aliased to corkback.vercel.app).

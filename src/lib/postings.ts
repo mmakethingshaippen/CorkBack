@@ -117,3 +117,59 @@ export async function getPosting(id: string, now = new Date()): Promise<Posting 
   if (!data) return null;
   return rowToPosting(data as Record<string, unknown>);
 }
+
+/**
+ * Look up a public profile by username. Returns null when no profile row exists
+ * (so callers can render a not-found state instead of a generic page).
+ */
+export async function getProfileByUsername(
+  username: string,
+): Promise<{ id: string; username: string } | null> {
+  if (!supabaseConfigured()) {
+    // Seed mode: treat the seed posting authors as the only known profiles.
+    const known = SEED_POSTINGS.some((p) => p.authorUsername === username);
+    return known ? { id: `seed-${username}`, username } : null;
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username")
+    .eq("username", username)
+    .maybeSingle();
+  if (error) throw toReadableError("getProfileByUsername", error);
+  return data ? { id: String(data.id), username: String(data.username) } : null;
+}
+
+/** Active postings authored by a given username, promoted-first within groups. */
+export async function listPostingsByUsername(
+  username: string,
+  now = new Date(),
+): Promise<Posting[]> {
+  if (!supabaseConfigured()) {
+    return orderWithPromoted(
+      SEED_POSTINGS.filter(
+        (p) =>
+          p.authorUsername === username &&
+          isActive(now, new Date(p.expiresAt), p.eventDate ? new Date(p.eventDate) : null, null),
+      ),
+    );
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("postings")
+    .select(
+      "id, title, body, flyer_url, rsvp_url, event_date, event_time, place_label, lat, lng, expiry, expires_at, is_promoted, created_at, profiles!postings_author_id_fkey(username), categories(slug), likes!likes_posting_id_fkey(count)",
+    )
+    .eq("profiles.username", username)
+    .is("deleted_at", null)
+    .gt("expires_at", now.toISOString());
+  if (error) throw toReadableError("listPostingsByUsername", error);
+  const active = (data ?? [])
+    .map((r) => rowToPosting(r as Record<string, unknown>))
+    .filter(
+      (p) =>
+        p.authorUsername === username &&
+        isActive(now, new Date(p.expiresAt), p.eventDate ? new Date(p.eventDate) : null, null),
+    );
+  return orderWithPromoted(active);
+}

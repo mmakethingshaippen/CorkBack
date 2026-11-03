@@ -7,7 +7,6 @@ import { MapView } from "@/components/map/MapView";
 import { listActivePostings } from "@/lib/postings";
 import { tiltFor } from "@/components/ui/Card";
 import { getViewer } from "@/lib/auth";
-import { UserRoundIcon } from "@/components/icons";
 
 // Public home: map + posting rails. No account wall for browsing.
 export default async function Home() {
@@ -44,18 +43,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen pb-24">
-      <TopBar
-        right={
-          viewer ? (
-            <span
-              className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-deep-navy bg-white text-deep-navy"
-              aria-label={viewer.username ? `@${viewer.username}` : "Your profile"}
-            >
-              <UserRoundIcon />
-            </span>
-          ) : undefined
-        }
-      />
+      <TopBar />
 
       {/* Cork header band (Choice A: cork only on header bands / empty states). */}
       <div className="px-4">

@@ -1,5 +1,20 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+
+/**
+ * Admin (service-role) client — server only. Bypasses RLS. Use ONLY in trusted
+ * server code for operations a session-scoped client cannot do (e.g. creating a
+ * profile row at sign-up before the user has a session). Never expose to the
+ * client; the service-role key is server-only.
+ */
+export function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } },
+  );
+}
 
 /**
  * Server Supabase client for Server Components / Route Handlers. Uses the anon

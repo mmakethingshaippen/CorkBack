@@ -1,18 +1,23 @@
 import Link from "next/link";
 import { Wordmark } from "./Wordmark";
 import { ArrowLeftIcon } from "@/components/icons";
+import { AuthControl } from "./AuthControl";
+import { getViewer } from "@/lib/auth";
 
 /**
- * Top bar with the text wordmark. Optional back link (dark-red "Back" lives in
- * the wordmark; the back control uses an arrow + label). Right slot for sign-in.
+ * Top bar with the text wordmark. Optional back link. The right slot shows the
+ * session state on EVERY page: signed in → profile chip + Sign out; signed out
+ * → Sign in. Pass an explicit `right` to override (rare).
  */
-export function TopBar({
+export async function TopBar({
   back,
   right,
 }: {
   back?: { href: string; label: string };
   right?: React.ReactNode;
 }) {
+  const viewer = right === undefined ? await getViewer() : null;
+
   return (
     <header className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="flex items-center gap-3">
@@ -23,11 +28,7 @@ export function TopBar({
         ) : null}
         <Wordmark />
       </div>
-      {right ?? (
-        <Link href="/sign-in" className="text-sm font-bold text-deep-navy">
-          Sign in
-        </Link>
-      )}
+      {right ?? <AuthControl username={viewer ? viewer.username ?? "" : null} />}
     </header>
   );
 }
