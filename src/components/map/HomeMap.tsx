@@ -92,6 +92,7 @@ export function HomeMap({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasNearMe, setHasNearMe] = useState(false);
   const [locationNote, setLocationNote] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const filtered = activeCategory
     ? postings.filter((p) => p.categorySlug === activeCategory)
@@ -184,6 +185,49 @@ export function HomeMap({
     }
   }
 
+  // "Use my location" button handler. If the user's location is already known
+  // (e.g. after a town search, requirement 5), return the map there without
+  // re-prompting. Otherwise ask the browser once. On allow: center at street
+  // level, save the center, set the note. On deny/unavailable: stay on Berkeley
+  // (do not move the map) and never block browsing.
+  function useMyLocation() {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const known = myLocationRef.current;
+    if (known) {
+      map.flyTo({ center: [known.lng, known.lat], zoom: LOCAL_ZOOM, duration: 800 });
+      save({ lat: known.lat, lng: known.lng, zoom: LOCAL_ZOOM, town: null });
+      setLocationNote("Showing near you");
+      return;
+    }
+
+    if (!("geolocation" in navigator)) {
+      setLocationNote("Location is unavailable. Showing Berkeley.");
+      return;
+    }
+
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        myLocationRef.current = here;
+        setHasNearMe(true);
+        map.flyTo({ center: [here.lng, here.lat], zoom: LOCAL_ZOOM, duration: 800 });
+        // Save only the center (never shown publicly; no pin for the user).
+        save({ lat: here.lat, lng: here.lng, zoom: LOCAL_ZOOM, town: null });
+        setLocationNote("Showing near you");
+        setLocating(false);
+      },
+      () => {
+        // Denied / unavailable / timeout → stay on Berkeley; do not block.
+        setLocationNote("Location unavailable. Staying on Berkeley.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 },
+    );
+  }
+
   async function searchTown(e: React.FormEvent) {
     e.preventDefault();
     const q = townQuery.trim();
@@ -241,6 +285,19 @@ export function HomeMap({
         </button>
       </form>
       {searchError ? <p className="text-sm text-dark-red">{searchError}</p> : null}
+
+      {/* Use my location — under the search box, left aligned, chip-styled
+          (white with a navy border, like an unselected category chip). */}
+      <div className="flex">
+        <button
+          type="button"
+          onClick={useMyLocation}
+          disabled={locating}
+          className="rounded-control border-2 border-deep-navy bg-white px-3 py-1 text-sm font-bold text-deep-navy transition-colors hover:bg-deep-navy/5 disabled:opacity-60"
+        >
+          {locating ? "Locating…" : "Use my location"}
+        </button>
+      </div>
 
       {/* Category filter — full list; selected chip is dark red. */}
       <div className="flex flex-wrap gap-2">

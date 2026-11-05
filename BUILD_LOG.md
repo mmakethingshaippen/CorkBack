@@ -243,3 +243,14 @@ Edited the existing app only. Theme, colors, fonts, account model, and scan flow
 - Map: OSM geocoder resolves Berkeley (37.871,-122.273 = the fallback) and another town (Portland, Oregon 45.520,-122.674). Saved center/town persists across reload (localStorage key `corkback.mapCenter`, read first on load). Location allowed → street zoom + Near me + save; denied/timeout → alert-home-town-or-Berkeley fallback, non-blocking. (Browser permission allow/deny is client-side; logic implemented and structurally verified; the geocode + fallback constants verified against live data.)
 - No exact user location shown publicly.
 - No test data left behind.
+
+## 2026-11-03 — Kiro — "Use my location" button on the home map (live: https://corkback.vercel.app)
+
+Edited the existing app only (`src/components/map/HomeMap.tsx`). Theme, colors, fonts, account model, and scan flow unchanged.
+
+- Added a **Use my location** button directly under the town search box, **left aligned**, styled like a category chip (white with a 2px navy border; `border-2 border-deep-navy bg-white text-deep-navy`).
+- On tap: asks the browser for location **once** (`getCurrentPosition`). On allow → center the map at **street level** (zoom 15), **save that center** in localStorage (`corkback.mapCenter`), and set the line under the map to **"Showing near you"**.
+- On deny / unavailable / timeout → **stay on Berkeley** (the map is not moved) and never block browsing; a non-blocking note is shown.
+- **Requirement 5:** the user's location is kept in `myLocationRef`, so after a town search, tapping **Use my location returns the map to the saved user location** (street zoom, re-saved) without re-prompting. If no prior fix exists, it requests one.
+- Privacy: the exact location is used only to center the map and is saved only to localStorage (client-side). It is **never shown publicly** and **no pin is added for the user** (pins are drawn only for postings).
+- Verification: typecheck ✓, tests ✓ (57/57), build ✓, no warnings. Button present with chip styling on the live site; no user coordinates / "Showing near you" leak in server HTML (set only after a client tap). Allow/deny and return-after-search are client geolocation interactions, implemented as specified and verified by code + the live render.

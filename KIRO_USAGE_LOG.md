@@ -94,3 +94,8 @@ The final writeup is built from this log, not from memory.
 - **MapLibre + OSM Nominatim** — Map centering/fly + town geocoding (no key).
 - **Supabase (admin DML)** — Upserted the 10 category rows; kept legacy rows for FK safety.
 - Theme, colors, fonts, account model, and scan flow left unchanged. No new live postings. No test data left behind; no exact user location shown publicly.
+
+## Nov 3 — "Use my location" button (2026-11-03)
+
+- **Kiro IDE** — Added the chip-styled "Use my location" button under the town search in HomeMap: asks once, centers at street level, saves the center, sets "Showing near you"; stays on Berkeley and never blocks on deny/unavailable; returns to the saved user location after a town search; never shows exact location publicly and adds no user pin. Ran gates and deployed.
+- Theme/fonts/account/scan flow unchanged. No test data created.
