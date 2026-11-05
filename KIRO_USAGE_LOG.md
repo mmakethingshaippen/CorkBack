@@ -99,3 +99,7 @@ The final writeup is built from this log, not from memory.
 
 - **Kiro IDE** — Added the chip-styled "Use my location" button under the town search in HomeMap: asks once, centers at street level, saves the center, sets "Showing near you"; stays on Berkeley and never blocks on deny/unavailable; returns to the saved user location after a town search; never shows exact location publicly and adds no user pin. Ran gates and deployed.
 - Theme/fonts/account/scan flow unchanged. No test data created.
+
+## Nov 3 — "Use my location" fresh high-accuracy fix (2026-11-03)
+
+- **Kiro IDE** — Reworked the Use-my-location handler in HomeMap: fresh getCurrentPosition/watchPosition on every tap (highAccuracy, timeout 10s, maximumAge 0, no saved center), refine up to 10s and keep the lowest-accuracy reading, zoom 17 under 30 m else zoom 15 with an approximate note, clear-then-save only the best reading, stay on Berkeley on deny. Privacy unchanged (center only, device-only, no public display, no user pin). Ran gates and deployed.

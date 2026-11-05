@@ -73,6 +73,14 @@ function save(center: SavedCenter) {
   }
 }
 
+function clearSaved() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function HomeMap({
   postings,
   homePoint,
@@ -93,6 +101,7 @@ export function HomeMap({
   const [hasNearMe, setHasNearMe] = useState(false);
   const [locationNote, setLocationNote] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const [approxNote, setApproxNote] = useState<string | null>(null);
 
   const filtered = activeCategory
     ? postings.filter((p) => p.categorySlug === activeCategory)
@@ -185,22 +194,16 @@ export function HomeMap({
     }
   }
 
-  // "Use my location" button handler. If the user's location is already known
-  // (e.g. after a town search, requirement 5), return the map there without
-  // re-prompting. Otherwise ask the browser once. On allow: center at street
-  // level, save the center, set the note. On deny/unavailable: stay on Berkeley
-  // (do not move the map) and never block browsing.
+  // "Use my location" button handler. Always requests a FRESH position on every
+  // tap (never uses the saved center). Uses high accuracy, 10s timeout,
+  // maximumAge 0. If the first fix is coarse (accuracy > 50 m), it keeps
+  // sampling for up to 10 s and uses the reading with the lowest accuracy
+  // number. Centers on the best fix: zoom 17 under 30 m, else zoom 15 with an
+  // "approximate" note. Clears the old saved center, then saves only the best
+  // reading. On deny/unavailable/timeout → stay on Berkeley; never block.
   function useMyLocation() {
     const map = mapRef.current;
     if (!map) return;
-
-    const known = myLocationRef.current;
-    if (known) {
-      map.flyTo({ center: [known.lng, known.lat], zoom: LOCAL_ZOOM, duration: 800 });
-      save({ lat: known.lat, lng: known.lng, zoom: LOCAL_ZOOM, town: null });
-      setLocationNote("Showing near you");
-      return;
-    }
 
     if (!("geolocation" in navigator)) {
       setLocationNote("Location is unavailable. Showing Berkeley.");
@@ -208,24 +211,65 @@ export function HomeMap({
     }
 
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        myLocationRef.current = here;
-        setHasNearMe(true);
-        map.flyTo({ center: [here.lng, here.lat], zoom: LOCAL_ZOOM, duration: 800 });
-        // Save only the center (never shown publicly; no pin for the user).
-        save({ lat: here.lat, lng: here.lng, zoom: LOCAL_ZOOM, town: null });
-        setLocationNote("Showing near you");
-        setLocating(false);
-      },
-      () => {
-        // Denied / unavailable / timeout → stay on Berkeley; do not block.
+    setApproxNote(null);
+
+    const ACCURACY_GOOD = 50; // metres: good enough to stop sampling early
+    const PRECISE = 30; // metres: zoom 17 vs 15
+    const MAX_SAMPLE_MS = 10000;
+
+    let best: { lat: number; lng: number; accuracy: number } | null = null;
+    let watchId: number | null = null;
+    let settled = false;
+
+    const applyBest = () => {
+      if (settled) return;
+      settled = true;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      clearTimeout(timer);
+      setLocating(false);
+
+      if (!best) {
+        // No usable fix → stay on Berkeley; do not block.
         setLocationNote("Location unavailable. Staying on Berkeley.");
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 },
-    );
+        return;
+      }
+
+      const here = { lat: best.lat, lng: best.lng };
+      myLocationRef.current = here;
+      setHasNearMe(true);
+
+      const precise = best.accuracy <= PRECISE;
+      const zoom = precise ? 17 : 15;
+      map.flyTo({ center: [here.lng, here.lat], zoom, duration: 800 });
+
+      // Clear the old saved center, then save ONLY the best reading.
+      clearSaved();
+      save({ lat: here.lat, lng: here.lng, zoom, town: null });
+
+      setLocationNote("Showing near you");
+      setApproxNote(precise ? null : "Location is approximate.");
+    };
+
+    const consider = (pos: GeolocationPosition) => {
+      const acc = pos.coords.accuracy;
+      if (!best || acc < best.accuracy) {
+        best = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: acc };
+      }
+      // Good enough on the first/any sufficiently-accurate reading → stop early.
+      if (best.accuracy <= ACCURACY_GOOD) applyBest();
+    };
+
+    const onError = () => {
+      // If we already have some reading, use it; otherwise fall back.
+      applyBest();
+    };
+
+    // Stop sampling after at most 10 s and use the best reading so far.
+    const timer = setTimeout(applyBest, MAX_SAMPLE_MS);
+
+    const opts: PositionOptions = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+    // Use watchPosition so we can keep improving accuracy within the window.
+    watchId = navigator.geolocation.watchPosition(consider, onError, opts);
   }
 
   async function searchTown(e: React.FormEvent) {
@@ -325,6 +369,7 @@ export function HomeMap({
         ) : null}
       </div>
       {locationNote ? <p className="text-xs text-ink/60">{locationNote}</p> : null}
+      {approxNote ? <p className="text-xs text-ink/60">{approxNote}</p> : null}
 
       {/* Posting rail (filtered). */}
       <section className="pt-2">

@@ -254,3 +254,15 @@ Edited the existing app only (`src/components/map/HomeMap.tsx`). Theme, colors, 
 - **Requirement 5:** the user's location is kept in `myLocationRef`, so after a town search, tapping **Use my location returns the map to the saved user location** (street zoom, re-saved) without re-prompting. If no prior fix exists, it requests one.
 - Privacy: the exact location is used only to center the map and is saved only to localStorage (client-side). It is **never shown publicly** and **no pin is added for the user** (pins are drawn only for postings).
 - Verification: typecheck ✓, tests ✓ (57/57), build ✓, no warnings. Button present with chip styling on the live site; no user coordinates / "Showing near you" leak in server HTML (set only after a client tap). Allow/deny and return-after-search are client geolocation interactions, implemented as specified and verified by code + the live render.
+
+## 2026-11-03 — Kiro — "Use my location": fresh high-accuracy fix each tap (live: https://corkback.vercel.app)
+
+Edited `src/components/map/HomeMap.tsx` only. Theme, colors, fonts, account model, and scan flow unchanged.
+
+- **Fresh fix every tap:** removed the "reuse saved center / myLocationRef shortcut" on tap; each tap now calls geolocation with `enableHighAccuracy: true, timeout: 10000, maximumAge: 0`. The saved center is never used on tap.
+- **Accuracy refinement:** uses `watchPosition` with a 10 s cap. The first reading ≤ 50 m stops sampling immediately; if the first reading is coarser than 50 m it keeps sampling for up to 10 s and uses the reading with the lowest accuracy number (smallest metres).
+- **Zoom + note:** centers on the best fix — accuracy ≤ 30 m → zoom 17; > 30 m → zoom 15 and a small note "Location is approximate." Sets the under-map line to "Showing near you."
+- **Save:** clears the old saved center (`localStorage.removeItem`) before saving ONLY the best reading.
+- **Deny / unavailable / timeout:** stays on Berkeley (map not moved), shows a non-blocking note, never blocks browsing.
+- **Privacy unchanged:** exact location used only to center the map, saved only on the device, never shown publicly, no pin added for the user.
+- Verification: typecheck ✓, tests ✓ (57/57), build ✓, no warnings. Button live on production (200). The multi-sample accuracy flow and the phone-outdoors "move and re-tap recenters" behavior are real-device geolocation interactions, implemented as specified and verified by code + the live render.
