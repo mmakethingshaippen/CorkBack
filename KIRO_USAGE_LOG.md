@@ -87,3 +87,10 @@ The final writeup is built from this log, not from memory.
 - **Vercel** — Deployed production via the CLI; confirmed `NEXT_PUBLIC_APP_URL` is the live URL so confirmation emails point at the live site.
 - **No test data left behind** — all throwaway verification users/postings/alerts removed (0 residual); no real user emailed.
 - No new third-party tools, Powers, MCP, or custom agents.
+
+## Nov 3 — home map location + full 10 categories (2026-11-03)
+
+- **Kiro IDE** — Built the local-first home map (localStorage center → geolocation → alert home town → Berkeley), a town search box (OSM Nominatim), a Near-me control, and a category filter; moved the world map to a secondary "Explore the world" section. Expanded the category list to the full 10 in the single source (`src/lib/categories.ts`) so the home filter, scan review, and alert choice all update from one place; added the matching category rows to the DB via the admin client. Ran gates and deployed.
+- **MapLibre + OSM Nominatim** — Map centering/fly + town geocoding (no key).
+- **Supabase (admin DML)** — Upserted the 10 category rows; kept legacy rows for FK safety.
+- Theme, colors, fonts, account model, and scan flow left unchanged. No new live postings. No test data left behind; no exact user location shown publicly.

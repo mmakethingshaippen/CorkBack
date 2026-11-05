@@ -31,3 +31,32 @@ export async function getViewer(): Promise<{ id: string; username: string | null
 export async function isSignedIn(): Promise<boolean> {
   return (await getViewer()) !== null;
 }
+
+/**
+ * The signed-in viewer's home point, taken from their most recent alert (town
+ * name + center). Used only to center the home map when device location is
+ * unavailable — never shown publicly. Returns null when signed out or no alert.
+ */
+export async function getViewerHomePoint(): Promise<
+  { lat: number; lng: number; townName: string | null } | null
+> {
+  if (!supabaseConfigured()) return null;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase
+    .from("alerts")
+    .select("center_lat, center_lng, town_name, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    lat: Number(data.center_lat),
+    lng: Number(data.center_lng),
+    townName: (data.town_name as string) ?? null,
+  };
+}

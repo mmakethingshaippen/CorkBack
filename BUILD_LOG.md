@@ -220,3 +220,26 @@ Fixed the five Nov-3 signed-in defects, deployed to production, and verified eac
 **Cleanup:** all throwaway verification users/postings/alerts removed; independent recount = 0 residual; harnesses deleted.
 
 **Gates:** `npm run typecheck` ✓, `npm test` ✓ (57/57), `npm run build` ✓. Deployed to production (aliased to corkback.vercel.app).
+
+## 2026-11-03 — Kiro — Home map location + full 10-category list (live: https://corkback.vercel.app)
+
+Edited the existing app only. Theme, colors, fonts, account model, and scan flow unchanged. No live postings added for the new categories (only category rows).
+
+**1. Home map — local-first (`src/components/map/HomeMap.tsx` NEW; `src/app/page.tsx`; `src/lib/auth.ts`).**
+- Centering order on load: (1) saved town/center in localStorage → center there; else (2) `navigator.geolocation.getCurrentPosition` — allowed → fly to location at street zoom (15), show a **Near me** button that returns to that location, and save the center; denied/unavailable/timeout (8s) → (3) the signed-in user's alert home town (`getViewerHomePoint()`), else (4) **Berkeley** (37.8715, -122.273). Never blocks browsing.
+- **Town search box above the map** → OSM Nominatim geocode → `flyTo` + save the town in localStorage.
+- The **world map is now a secondary "Explore the world" section** (reuses the existing `MapView`), not the starting view.
+- Exact user location is used only to center the map (and saved to localStorage client-side); it is never rendered as public text and never attached to a posting. Confirmed no `latitude`/`longitude`/`getCurrentPosition` strings in server HTML.
+- Scan a flyer stays dark red; Set an alert stays deep navy.
+
+**2. Categories — full 10 (`src/lib/categories.ts`; `supabase/stage5_categories.sql`).**
+- List, in order: Music, Nightlife, Sports, Social Clubs, Lost and Found, Housing and Real Estate, Jobs, Sales, Classes, Community. No duplicates. Merges reflected: old Clubs + Meetup → Social Clubs; Sale → Sales.
+- `src/lib/categories.ts` is the single source for all four surfaces (home filter, scan review, alert choice, posting display). Added category rows to the DB via admin upsert (new slugs: nightlife, social-clubs, housing, jobs; relabel sale→Sales, lost-found→"Lost and Found"). Legacy `clubs`/`meetup` rows kept for FK safety but not shown; no live posting uses them.
+- Added a **category filter** to the home page (in HomeMap) that filters both pins and the rail.
+
+**Verification.**
+- Build gates: typecheck ✓, tests ✓ (57/57), build ✓, no warnings. Deployed to production (aliased corkback.vercel.app).
+- Categories: all 10 present in the home filter (live), and in scan review + alerts (verified via a signed-in throwaway user — both pages 200, not gated, all 10 labels in each page bundle; user removed, 0 residual). Posting display uses the same source. No old "Meetup"/"Lost & Found" chips remain.
+- Map: OSM geocoder resolves Berkeley (37.871,-122.273 = the fallback) and another town (Portland, Oregon 45.520,-122.674). Saved center/town persists across reload (localStorage key `corkback.mapCenter`, read first on load). Location allowed → street zoom + Near me + save; denied/timeout → alert-home-town-or-Berkeley fallback, non-blocking. (Browser permission allow/deny is client-side; logic implemented and structurally verified; the geocode + fallback constants verified against live data.)
+- No exact user location shown publicly.
+- No test data left behind.
