@@ -107,3 +107,8 @@ The final writeup is built from this log, not from memory.
 ## Nov 3 — viewer location dot (2026-11-03)
 
 - **Kiro IDE** — Added a browser-only navy dot + white ring at the viewer location in HomeMap, drawn from the client-side centering location (never sent to the server, never a posting, never shown to others). Hidden on town search, shown again only on Use my location; posting pins kept dark red so the navy dot is distinct; a soft accuracy circle (GeoJSON polygon) widens with accuracy when > 30 m, alongside the approximate note. Ran gates and deployed.
+
+## Nov 3 — password reset flow (2026-11-03)
+
+- **Kiro IDE** — Built the real reset flow: a Forgot password link on sign-in, a `/forgot-password` email form calling Supabase `resetPasswordForEmail` with a live redirect and a non-looping "Check your email" confirmation, and an `/auth/reset-password` page that exchanges the PKCE code and sets a new password. Verified the recovery link redirects to the live site (not localhost) and that sign-in with the new password works while the old is rejected. Ran typecheck/build/tests and deployed; test user removed.
+- **Supabase Auth** — resetPasswordForEmail + exchangeCodeForSession + updateUser (PKCE browser flow); confirmed the live redirect URL is honored via admin generateLink.

@@ -278,3 +278,16 @@ Edited `src/components/map/HomeMap.tsx` only. Theme, colors, fonts, account mode
 - **Accuracy circle:** when accuracy > 30 m, the "Location is approximate." note stays and a **soft navy fill circle** (GeoJSON polygon sized to the accuracy in metres, 12% opacity) is drawn around the dot so the uncertainty is visible; ≤ 30 m draws no circle.
 - Cleanup: the viewer marker is removed on unmount.
 - Verification: typecheck ✓, tests ✓ (57/57), build ✓, no warnings. Live on production (200), button present; no coordinates/notes in server HTML (the dot + notes are client-only). The dot render, its hide-on-search / show-on-tap behaviour, and the accuracy circle are real-device geolocation interactions, implemented as specified and verified by code + the live render.
+
+## 2026-11-03 — Kiro — Password reset flow (live: https://corkback.vercel.app)
+
+Fixed the broken "forgot password" (it had no reset page and sent no email). Theme, colors, and account model unchanged.
+
+**Files added/changed**
+- `src/app/sign-in/page.tsx` — added a "Forgot password?" link → `/forgot-password`.
+- `src/app/forgot-password/page.tsx` + `ForgotPasswordForm.tsx` — NEW. Email field → Supabase `resetPasswordForEmail(email, { redirectTo })` with `redirectTo = <NEXT_PUBLIC_APP_URL or origin>/auth/reset-password` (i.e. `https://corkback.vercel.app/auth/reset-password` in prod). On submit shows **"Check your email"** and does NOT loop back to sign-in.
+- `src/app/auth/reset-password/page.tsx` + `ResetPasswordForm.tsx` — NEW. On mount, exchanges the PKCE `code` from the email link via `exchangeCodeForSession` (with a `getSession()` fallback), then lets the user set a new password via `updateUser({ password })`, signs out of the recovery session, and points them to sign in. Invalid/expired link shows a clear "request a new link" state.
+
+**Redirect URL check (item 5):** `NEXT_PUBLIC_APP_URL` is the live URL (not localhost). Verified via the admin `generateLink({ type: recovery, redirectTo })` that the recovery link's effective `redirect_to` is exactly `https://corkback.vercel.app/auth/reset-password` — Supabase honored it, so the live URL is in the allowed redirect list (a non-allowed URL would be rewritten to the Site URL). `@supabase/ssr` browser client is `flowType: "pkce"`, so the link carries `?code=` which the reset page exchanges.
+
+**Verification (item 6):** typecheck ✓, build ✓ (routes `/forgot-password` and `/auth/reset-password` present), tests ✓ (57/57). Live reset test with a throwaway account: recovery link redirect = live reset page; set a new password; **sign-in with the NEW password succeeds and the OLD password is rejected**. (The PKCE code exchange is browser-only — the verifier is set on the forgot page and read on the reset page in the same browser; the headless harness proved the redirect target + password-change + sign-in, which is everything except the browser-held verifier step.) Live pages confirmed: sign-in has the Forgot link; `/forgot-password` serves the email form; `/auth/reset-password` serves the set-password page. Test user removed (0 residual).

@@ -16,6 +16,9 @@ export default function SignInPage() {
       <div className="mx-auto max-w-md px-4 pt-6">
         <SignInForm />
         <p className="mt-4 text-sm text-ink/70">
+          <NavyLink href="/forgot-password">Forgot password?</NavyLink>
+        </p>
+        <p className="mt-2 text-sm text-ink/70">
           New here? <NavyLink href="/sign-up">Create an account</NavyLink>.
         </p>
       </div>
