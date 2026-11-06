@@ -103,3 +103,7 @@ The final writeup is built from this log, not from memory.
 ## Nov 3 — "Use my location" fresh high-accuracy fix (2026-11-03)
 
 - **Kiro IDE** — Reworked the Use-my-location handler in HomeMap: fresh getCurrentPosition/watchPosition on every tap (highAccuracy, timeout 10s, maximumAge 0, no saved center), refine up to 10s and keep the lowest-accuracy reading, zoom 17 under 30 m else zoom 15 with an approximate note, clear-then-save only the best reading, stay on Berkeley on deny. Privacy unchanged (center only, device-only, no public display, no user pin). Ran gates and deployed.
+
+## Nov 3 — viewer location dot (2026-11-03)
+
+- **Kiro IDE** — Added a browser-only navy dot + white ring at the viewer location in HomeMap, drawn from the client-side centering location (never sent to the server, never a posting, never shown to others). Hidden on town search, shown again only on Use my location; posting pins kept dark red so the navy dot is distinct; a soft accuracy circle (GeoJSON polygon) widens with accuracy when > 30 m, alongside the approximate note. Ran gates and deployed.

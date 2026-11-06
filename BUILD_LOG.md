@@ -266,3 +266,15 @@ Edited `src/components/map/HomeMap.tsx` only. Theme, colors, fonts, account mode
 - **Deny / unavailable / timeout:** stays on Berkeley (map not moved), shows a non-blocking note, never blocks browsing.
 - **Privacy unchanged:** exact location used only to center the map, saved only on the device, never shown publicly, no pin added for the user.
 - Verification: typecheck ✓, tests ✓ (57/57), build ✓, no warnings. Button live on production (200). The multi-sample accuracy flow and the phone-outdoors "move and re-tap recenters" behavior are real-device geolocation interactions, implemented as specified and verified by code + the live render.
+
+## 2026-11-03 — Kiro — Viewer location dot on the home map (live: https://corkback.vercel.app)
+
+Edited `src/components/map/HomeMap.tsx` only. Theme, colors, fonts, account model, and scan flow unchanged.
+
+- **Viewer dot:** when the map is "showing near you", draw one small **navy dot (#1F2E4D) with a white ring** at the viewer location (a MapLibre `div` marker). Drawn from the same client-side location used to center the map.
+- **Browser-only / private:** the dot is created client-side only; it is never sent to the server, never saved as a posting, and never shown to any other user.
+- **Hide/show rules:** a town search hides the dot and its circle (`hideViewerDot()` in `searchTown`); it reappears only when **Use my location** is tapped (and on the on-load allowed path, which is also "showing near you"). The floating "Near me" recenter does not redraw it.
+- **Posting pins unchanged:** postings remain dark-red teardrop pins (#8C2B1F); the viewer dot is navy, so it can never look like a posting.
+- **Accuracy circle:** when accuracy > 30 m, the "Location is approximate." note stays and a **soft navy fill circle** (GeoJSON polygon sized to the accuracy in metres, 12% opacity) is drawn around the dot so the uncertainty is visible; ≤ 30 m draws no circle.
+- Cleanup: the viewer marker is removed on unmount.
+- Verification: typecheck ✓, tests ✓ (57/57), build ✓, no warnings. Live on production (200), button present; no coordinates/notes in server HTML (the dot + notes are client-only). The dot render, its hide-on-search / show-on-tap behaviour, and the accuracy circle are real-device geolocation interactions, implemented as specified and verified by code + the live render.

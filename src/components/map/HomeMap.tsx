@@ -81,6 +81,28 @@ function clearSaved() {
   }
 }
 
+const VIEWER_CIRCLE_SOURCE = "viewer-accuracy";
+const VIEWER_CIRCLE_LAYER = "viewer-accuracy-fill";
+
+/** A geodesic circle polygon (GeoJSON) of `radiusMeters` around a point. */
+function circlePolygon(
+  lng: number,
+  lat: number,
+  radiusMeters: number,
+): GeoJSON.Feature<GeoJSON.Polygon> {
+  const points = 48;
+  const coords: [number, number][] = [];
+  const earth = 6371000; // metres
+  const latRad = (lat * Math.PI) / 180;
+  for (let i = 0; i <= points; i++) {
+    const angle = (i / points) * 2 * Math.PI;
+    const dLat = (radiusMeters * Math.cos(angle)) / earth;
+    const dLng = (radiusMeters * Math.sin(angle)) / (earth * Math.cos(latRad));
+    coords.push([lng + (dLng * 180) / Math.PI, lat + (dLat * 180) / Math.PI]);
+  }
+  return { type: "Feature", geometry: { type: "Polygon", coordinates: [coords] }, properties: {} };
+}
+
 export function HomeMap({
   postings,
   homePoint,
@@ -93,6 +115,11 @@ export function HomeMap({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const myLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  // The viewer's location dot (navy + white ring) and its soft accuracy circle.
+  // Browser-only: never sent to the server, never a posting, never shown to
+  // another user. Posting pins stay dark red; this dot is navy so it can never
+  // look like a posting.
+  const viewerDotRef = useRef<maplibregl.Marker | null>(null);
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [townQuery, setTownQuery] = useState("");
@@ -127,6 +154,57 @@ export function HomeMap({
     [router],
   );
 
+  // Show the viewer dot (navy dot + white ring) at the location used to center
+  // the map. When accuracy is coarse (> 30 m), draw a soft circle whose radius
+  // matches the accuracy, so the uncertainty is visible. Browser-only; nothing
+  // is sent to the server or saved as a posting.
+  const showViewerDot = useCallback((lat: number, lng: number, accuracy: number | null) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Dot marker (navy fill, white ring). Deliberately NOT dark red so it can
+    // never be mistaken for a posting pin.
+    const el = document.createElement("div");
+    el.setAttribute("aria-hidden", "true");
+    el.style.cssText =
+      "width:14px;height:14px;border-radius:9999px;background:#1F2E4D;border:3px solid #fff;box-shadow:0 0 0 1px rgba(31,46,77,.35)";
+    if (viewerDotRef.current) viewerDotRef.current.remove();
+    viewerDotRef.current = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
+
+    // Soft accuracy circle only when accuracy is coarse (> 30 m).
+    const drawCircle = () => {
+      const widen = accuracy !== null && accuracy > 30;
+      const data = widen
+        ? circlePolygon(lng, lat, accuracy as number)
+        : ({ type: "FeatureCollection", features: [] } as GeoJSON.FeatureCollection);
+      const existing = map.getSource(VIEWER_CIRCLE_SOURCE) as maplibregl.GeoJSONSource | undefined;
+      if (existing) {
+        existing.setData(data as GeoJSON.GeoJSON);
+      } else {
+        map.addSource(VIEWER_CIRCLE_SOURCE, { type: "geojson", data: data as GeoJSON.GeoJSON });
+        map.addLayer({
+          id: VIEWER_CIRCLE_LAYER,
+          type: "fill",
+          source: VIEWER_CIRCLE_SOURCE,
+          paint: { "fill-color": "#1F2E4D", "fill-opacity": 0.12 },
+        });
+      }
+    };
+    if (map.isStyleLoaded()) drawCircle();
+    else map.once("load", drawCircle);
+  }, []);
+
+  // Hide the viewer dot and its accuracy circle (e.g. after a town search).
+  const hideViewerDot = useCallback(() => {
+    const map = mapRef.current;
+    if (viewerDotRef.current) {
+      viewerDotRef.current.remove();
+      viewerDotRef.current = null;
+    }
+    const src = map?.getSource(VIEWER_CIRCLE_SOURCE) as maplibregl.GeoJSONSource | undefined;
+    if (src) src.setData({ type: "FeatureCollection", features: [] } as GeoJSON.GeoJSON);
+  }, []);
+
   // Initialise the map once, choosing the center per the order above.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -155,6 +233,9 @@ export function HomeMap({
           map.flyTo({ center: [here.lng, here.lat], zoom: LOCAL_ZOOM, duration: 800 });
           // Save only the center (never shown publicly; used only to center).
           save({ lat: here.lat, lng: here.lng, zoom: LOCAL_ZOOM, town: null });
+          // Draw the browser-only viewer dot at the centering location.
+          setLocationNote("Showing near you");
+          showViewerDot(here.lat, here.lng, pos.coords.accuracy);
         },
         () => {
           // Denied / unavailable / timeout → fall back (map already centered on
@@ -174,6 +255,10 @@ export function HomeMap({
     return () => {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
+      if (viewerDotRef.current) {
+        viewerDotRef.current.remove();
+        viewerDotRef.current = null;
+      }
       map.remove();
       mapRef.current = null;
     };
@@ -248,6 +333,10 @@ export function HomeMap({
 
       setLocationNote("Showing near you");
       setApproxNote(precise ? null : "Location is approximate.");
+
+      // Browser-only viewer dot at the centering location. Soft circle widens
+      // with accuracy when the fix is coarse (> 30 m).
+      showViewerDot(here.lat, here.lng, best.accuracy);
     };
 
     const consider = (pos: GeolocationPosition) => {
@@ -293,6 +382,10 @@ export function HomeMap({
       mapRef.current?.flyTo({ center: [lng, lat], zoom: TOWN_ZOOM, duration: 800 });
       save({ lat, lng, zoom: TOWN_ZOOM, town: q });
       setLocationNote(`Showing ${q}.`);
+      // The map has moved away from the viewer → hide the viewer dot/circle and
+      // the approximate note. It returns only when Use my location is tapped.
+      hideViewerDot();
+      setApproxNote(null);
     } catch {
       setSearchError("Town search is unavailable right now. Please try again.");
     } finally {
