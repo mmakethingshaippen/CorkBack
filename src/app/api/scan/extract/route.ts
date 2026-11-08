@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { CATEGORIES } from "@/lib/categories";
+import { createClient } from "@/lib/supabase/server";
 import type { ExtractedFlyer } from "@/lib/types";
 
 /**
@@ -92,6 +93,20 @@ function safeMessage(err: unknown): string {
 }
 
 export async function POST(req: Request) {
+  // Scanning is a posting action: sign-in required (checked before anything
+  // else so anonymous callers cannot spend the Gemini quota).
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return NextResponse.json(
+      { error: "Sign-in is not configured in this environment. Add Supabase credentials to enable scanning." },
+      { status: 501 },
+    );
+  }
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Sign in to scan a flyer." }, { status: 401 });
+  }
+
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
       { error: "Extraction is not configured in this environment. Add GEMINI_API_KEY to enable scanning." },

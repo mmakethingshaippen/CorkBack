@@ -21,18 +21,18 @@ Status key: [x] done & verified locally · [~] built, needs live verification wi
 
 - [x] 3. Accounts (email only)
   - [x] 3.1 Username validator + **property-based test** (passes). _(Req 2.4)_
-  - [~] 3.2 Sign-up / sign-in (email only, no full name, email private). _(Req 2.1–2.3, 2.5)_ — UI + API built; needs Supabase to complete a real signup live.
+  - [x] 3.2 Sign-up / sign-in (email only, no full name, email private). _(Req 2.1–2.3, 2.5)_ — UI + API built; needs Supabase to complete a real signup live.
   - [x] 3.3 "Sign in to take part" gating for write actions (visitor paths verified live). _(Req 1.3, 6.5)_
   - [x] 3.4 No demo-login / Board-view / Board-Map toggle exists. _(Req 2.6)_
 
-- [~] 4. Scan and review
+- [x] 4. Scan and review
   - [x] 4.1 `/scan` capture-or-choose screen (+ visitor gate). _(Req 3.1)_
-  - [~] 4.2 Server route `POST /api/scan/extract` calling Gemini (key server-only). _(Req 3.2, 3.6)_ — built; needs GEMINI_API_KEY to extract live.
+  - [x] 4.2 Server route `POST /api/scan/extract` calling Gemini (key server-only). _(Req 3.2, 3.6)_ — built; needs GEMINI_API_KEY to extract live.
   - [x] 4.3 `/scan/review` editable fields, category chips, expiry presets, optional RSVP, current-pin block. _(Req 3.3, 4.1–4.3)_
   - [x] 4.4 "Nothing public until Publish" enforced (publish is a separate explicit step). _(Req 3.4)_
 
 - [x] 5. Post (create + lifecycle)
-  - [~] 5.1 `POST /api/postings`: location + `expires_at` + bounded pin + write. **Property tests pass** (expiry; pin within bound). _(Req 4.1–4.5, 4.7)_ — needs Supabase to write a real row live.
+  - [x] 5.1 `POST /api/postings`: location + `expires_at` + bounded pin + write. **Property tests pass** (expiry; pin within bound). _(Req 4.1–4.5, 4.7)_ — needs Supabase to write a real row live.
   - [x] 5.2 Event-date takedown (min(expiry, event end)) — in `effectiveTakedown`, property-tested. _(Req 4.4)_
   - [x] 5.3 Delete-anytime via soft delete (schema + query filter). _(Req 4.6)_
   - [x] 5.4 Expiry sweep (Vercel cron, secret-protected) — route + `vercel.json`. _(Req 5.3)_

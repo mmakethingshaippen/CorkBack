@@ -3,6 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Vitest does not inherit Next's tsconfig path aliases.
 vi.mock("@/lib/categories", async () => import("../../../../lib/categories"));
 
+// Sign-in is checked via Supabase; control the session per test.
+let currentUser: { id: string } | null = { id: "user-1" };
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: currentUser } }) } }),
+}));
+
 import { POST } from "./route";
 
 const flyer = {
@@ -40,6 +46,8 @@ async function scan(req = request()) {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubEnv("GEMINI_API_KEY", "test-secret-not-real");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+  currentUser = { id: "user-1" };
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -155,6 +163,22 @@ describe("flyer scan", () => {
     expect((await scan(request(new File(["jpeg"], "flyer.jpg", { type: "image/jpg" })))).status).toBe(200);
     const payload = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
     expect(payload.contents[0].parts[1].inlineData.mimeType).toBe("image/jpeg");
+  });
+
+  it("requires sign-in and does not call Gemini for visitors", async () => {
+    currentUser = null;
+    const result = await scan();
+    expect(result.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns an optional RSVP link and a fallback category when given an unknown one", async () => {
+    fetchMock.mockResolvedValueOnce(
+      generated(JSON.stringify({ ...flyer, categorySlug: "nonsense", rsvpUrl: "https://example.com/rsvp" })),
+    );
+    const { body } = await scan();
+    expect(body.extracted.rsvpUrl).toBe("https://example.com/rsvp");
+    expect(body.extracted.categorySlug).toBe("community");
   });
 
   it("keeps the missing-key error readable without making an API call", async () => {

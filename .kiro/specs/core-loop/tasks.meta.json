@@ -1,0 +1,48 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "3.2 Sign-up / sign-in (email only, no full name, email private). _(Req 2.1–2.3, 2.5)_ — UI + API built; needs Supabase to complete a real signup live.": [
+      {
+        "executionId": "0ae8c959-dc10-46ac-afdd-b5984fac8b2c",
+        "chatSessionId": "sess_edd058ff-b0ae-40ba-8e6c-7919985e6891",
+        "timestamp": 1794112941748
+      },
+      {
+        "executionId": "0ae8c959-dc10-46ac-afdd-b5984fac8b2c",
+        "chatSessionId": "sess_edd058ff-b0ae-40ba-8e6c-7919985e6891",
+        "timestamp": 1794113118980
+      }
+    ],
+    "4.2 Server route `POST /api/scan/extract` calling Gemini (key server-only). _(Req 3.2, 3.6)_ — built; needs GEMINI_API_KEY to extract live.": [
+      {
+        "executionId": "0ae8c959-dc10-46ac-afdd-b5984fac8b2c",
+        "chatSessionId": "sess_edd058ff-b0ae-40ba-8e6c-7919985e6891",
+        "timestamp": 1794113124325
+      },
+      {
+        "executionId": "0ae8c959-dc10-46ac-afdd-b5984fac8b2c",
+        "chatSessionId": "sess_edd058ff-b0ae-40ba-8e6c-7919985e6891",
+        "timestamp": 1794113427586
+      }
+    ],
+    "4. Scan and review": [
+      {
+        "executionId": "0ae8c959-dc10-46ac-afdd-b5984fac8b2c",
+        "chatSessionId": "sess_edd058ff-b0ae-40ba-8e6c-7919985e6891",
+        "timestamp": 1794113428160
+      }
+    ],
+    "5.1 `POST /api/postings`: location + `expires_at` + bounded pin + write. **Property tests pass** (expiry; pin within bound). _(Req 4.1–4.5, 4.7)_ — needs Supabase to write a real row live.": [
+      {
+        "executionId": "0ae8c959-dc10-46ac-afdd-b5984fac8b2c",
+        "chatSessionId": "sess_edd058ff-b0ae-40ba-8e6c-7919985e6891",
+        "timestamp": 1794113430786
+      },
+      {
+        "executionId": "0ae8c959-dc10-46ac-afdd-b5984fac8b2c",
+        "chatSessionId": "sess_edd058ff-b0ae-40ba-8e6c-7919985e6891",
+        "timestamp": 1794113832754
+      }
+    ]
+  }
+}

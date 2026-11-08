@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { computeExpiresAt, clampPinNudge, EXPIRY_PRESETS, type ExpiryPreset } from "@/lib/domain";
-import { CATEGORIES } from "@/lib/categories";
+import { validatePostingInput } from "@/lib/postingInput";
 
 /**
  * Create a posting. Requires an authenticated author. Server computes expires_at
  * from the preset and clamps the pin to stay near the poster's real location.
- * Nothing about the request is public until this row is written.
+ * Only the bounded pin is stored; the raw location is discarded, and the
+ * response contains just the new id. Nothing is public until this row is written.
  */
 export async function POST(req: Request) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -24,45 +24,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sign in to post." }, { status: 401 });
   }
 
-  const b = await req.json();
-  const expiry = b.expiry as ExpiryPreset;
-  if (!EXPIRY_PRESETS.includes(expiry)) {
-    return NextResponse.json({ error: "Invalid expiry preset." }, { status: 400 });
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
-  const category = CATEGORIES.find((c) => c.slug === b.categorySlug);
-  if (!category) {
-    return NextResponse.json({ error: "Invalid category." }, { status: 400 });
-  }
-  if (!b.title || !b.real) {
-    return NextResponse.json({ error: "Title and location are required." }, { status: 400 });
-  }
+  const v = validatePostingInput(raw, new Date());
+  if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+  const p = v.value;
 
-  // Resolve the category id.
   const { data: cat } = await supabase
     .from("categories")
     .select("id")
-    .eq("slug", category.slug)
+    .eq("slug", p.categorySlug)
     .single();
-
-  const now = new Date();
-  const expiresAt = computeExpiresAt(now, expiry);
-  const pin = clampPinNudge(b.real, b.desired ?? b.real);
+  if (!cat) {
+    return NextResponse.json({ error: "Invalid category." }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from("postings")
     .insert({
       author_id: user.id,
-      title: String(b.title).slice(0, 140),
-      body: String(b.body ?? ""),
-      category_id: cat?.id,
-      rsvp_url: b.rsvpUrl ?? null,
-      event_date: b.eventDate ?? null,
-      event_time: b.eventTime ?? null,
-      place_label: b.placeLabel ?? "",
-      lat: pin.lat,
-      lng: pin.lng,
-      expiry,
-      expires_at: expiresAt.toISOString(),
+      title: p.title,
+      body: p.body,
+      category_id: cat.id,
+      rsvp_url: p.rsvpUrl,
+      event_date: p.eventDate,
+      event_time: p.eventTime,
+      place_label: p.placeLabel,
+      lat: p.pin.lat,
+      lng: p.pin.lng,
+      expiry: p.expiry,
+      expires_at: p.expiresAt.toISOString(),
     })
     .select("id")
     .single();
