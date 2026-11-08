@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Field } from "@/components/ui/Field";
 import { createClient } from "@/lib/supabase/client";
+import { getAppUrl, RESET_PASSWORD_PATH } from "@/lib/appUrl";
 
 /**
  * Forgot password: email field → Supabase resetPasswordForEmail with a redirect
@@ -20,19 +21,21 @@ export function ForgotPasswordForm() {
     setBusy(true);
     setStatus(null);
 
-    // Redirect the email link to the live reset page. Prefer the configured
-    // public app URL; fall back to this browser's origin (the live domain in
-    // production). This guarantees the link opens the live site, not localhost.
-    const base =
-      (process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || window.location.origin);
-    const redirectTo = `${base}/auth/reset-password`;
+    // Always point the email at the canonical production reset page. Using the
+    // browser's own origin (e.g. a Vercel deployment URL) made Supabase reject
+    // the redirect and fall back to the Site URL (the homepage).
+    const redirectTo = `${getAppUrl()}${RESET_PASSWORD_PATH}`;
 
     const supabase = createClient();
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
     setBusy(false);
 
     if (error) {
-      setStatus(error.message);
+      setStatus(
+        /only request this after|rate limit/i.test(error.message)
+          ? "A reset email was sent recently. Please wait a minute, then try again."
+          : error.message,
+      );
       return;
     }
     // Always show the same confirmation (don't reveal whether the email exists).

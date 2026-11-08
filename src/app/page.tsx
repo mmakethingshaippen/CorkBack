@@ -4,11 +4,39 @@ import { CorkBand } from "@/components/ui/CorkBand";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { MapView } from "@/components/map/MapView";
 import { HomeMap } from "@/components/map/HomeMap";
+import { redirect } from "next/navigation";
 import { listActivePostings } from "@/lib/postings";
 import { getViewer, getViewerHomePoint } from "@/lib/auth";
+import { AuthHashForwarder } from "@/components/auth/AuthHashForwarder";
 
 // Public home: local-first map + filterable rail. No account wall for browsing.
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Supabase Site URL fallback, server half. If an auth email link landed on
+  // the homepage (redirect not allowed, or a template that points at the Site
+  // URL), send its credentials into the auth routes instead of showing the
+  // board. Values are passed through, never logged.
+  const sp = await searchParams;
+  const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
+  const code = one("code");
+  const tokenHash = one("token_hash");
+  const errorCode = one("error_code");
+  if (code) {
+    redirect(`/auth/callback?code=${encodeURIComponent(code)}`);
+  }
+  if (tokenHash) {
+    const qs = new URLSearchParams({ token_hash: tokenHash, type: one("type") ?? "recovery" });
+    const next = one("next");
+    if (next) qs.set("next", next);
+    redirect(`/auth/confirm?${qs.toString()}`);
+  }
+  if (errorCode) {
+    redirect(`/sign-in?error=${errorCode === "otp_expired" ? "link_expired" : "link_invalid"}`);
+  }
+
   const viewer = await getViewer();
 
   let postings: Awaited<ReturnType<typeof listActivePostings>> = [];
@@ -25,6 +53,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen pb-24">
+      <AuthHashForwarder />
       <TopBar />
 
       {/* Cork header band (Choice A: cork only on header bands / empty states). */}
