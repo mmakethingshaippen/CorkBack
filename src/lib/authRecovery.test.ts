@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { hasRecoveryAmr, isRecentRecovery } from "./authRecovery";
-import { safeNextPath } from "./appUrl";
+import { normalizeAppUrl, safeNextPath } from "./appUrl";
 
 // Build an unsigned JWT-shaped string with the given claims (test-only).
 function jwt(claims: object): string {
@@ -33,6 +33,24 @@ describe("isRecentRecovery", () => {
     expect(isRecentRecovery({ recovery_sent_at: null }, now)).toBe(false);
     expect(isRecentRecovery(null, now)).toBe(false);
     expect(isRecentRecovery({ recovery_sent_at: "2026-11-03T13:00:00Z" }, now)).toBe(false);
+  });
+});
+
+describe("normalizeAppUrl", () => {
+  it("forces https for the production host (the live misconfiguration)", () => {
+    expect(normalizeAppUrl("http://corkback.vercel.app")).toBe("https://corkback.vercel.app");
+  });
+  it("reduces to a bare origin and tolerates a missing scheme", () => {
+    expect(normalizeAppUrl("https://corkback.vercel.app/")).toBe("https://corkback.vercel.app");
+    expect(normalizeAppUrl(" corkback.vercel.app ")).toBe("https://corkback.vercel.app");
+  });
+  it("keeps http for local development", () => {
+    expect(normalizeAppUrl("http://localhost:3000")).toBe("http://localhost:3000");
+  });
+  it("returns null for empty or unusable values", () => {
+    expect(normalizeAppUrl("")).toBeNull();
+    expect(normalizeAppUrl(undefined)).toBeNull();
+    expect(normalizeAppUrl("http://")).toBeNull();
   });
 });
 

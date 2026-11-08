@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { usernameRejection } from "@/lib/domain";
+import { getAppUrl } from "@/lib/appUrl";
 
 /**
  * Email-only sign-up. Server re-validates the username rule (never trust the
@@ -41,11 +42,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "That username is taken." }, { status: 409 });
   }
 
-  // Build the confirmation redirect so the email link opens the live site, not
-  // localhost. Prefer the explicit public app URL; fall back to the request's
-  // own origin (which on Vercel is the deployed domain).
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || new URL(req.url).origin;
+  // Confirmation redirect on the canonical https origin. Using the raw env value
+  // sent "http://corkback.vercel.app/", which Supabase rejected (not on the
+  // allow-list) and replaced with the Site URL. The homepage forwards the
+  // confirmation code to /auth/callback.
+  const appUrl = getAppUrl();
 
   const { data, error } = await supabase.auth.signUp({
     email,

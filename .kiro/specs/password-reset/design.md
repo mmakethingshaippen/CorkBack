@@ -10,8 +10,10 @@ Supabase validates `redirect_to` when the link is clicked. If the URL is not on 
 | `https://cork-back-…-max-082a.vercel.app/auth/reset-password` (a Vercel deployment URL) | `https://corkback.vercel.app/` (homepage) |
 | `https://example.org/not-allowed` | `https://corkback.vercel.app/` (homepage) |
 
+**Primary cause (confirmed in a real browser on production):** the production `NEXT_PUBLIC_APP_URL` is `http://corkback.vercel.app`, with **http**. The forgot form built `redirectTo` from it, so the recovery request sent `redirect_to=http://corkback.vercel.app/auth/reset-password`. The http URL is not on the allow-list, so Supabase fell back to the Site URL. The sign-up confirmation redirect had the same defect.
+
 Repo-side causes:
-1. `ForgotPasswordForm` built `redirectTo` from `process.env.NEXT_PUBLIC_APP_URL || window.location.origin`. The deployed client bundle does **not** contain the app URL, so it used the browser origin. A reset requested from any non-canonical address fell back to the homepage.
+1. `ForgotPasswordForm` used the raw `NEXT_PUBLIC_APP_URL` (http in production), else `window.location.origin` (any non-canonical address, such as a Vercel deployment URL, also falls back to the homepage). Fixed by `getAppUrl()`/`normalizeAppUrl()`: a bare origin with https forced for non-local hosts.
 2. The homepage had no handler for recovery credentials (`?code`, `?token_hash`, `#access_token`, `#error_code`), so any fallback dead-ended there.
 3. The reset page exchanged the PKCE code only in the browser and could not read implicit hash tokens or link errors (the `@supabase/ssr` browser client is PKCE-only and ignores the hash).
 
