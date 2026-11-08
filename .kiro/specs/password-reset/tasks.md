@@ -12,5 +12,5 @@ Status key: [x] done and verified · [~] built, needs Max's participation to ver
 - [x] 8. Reset page: all credential forms, recovery-only gate, form, mismatch, policy, loading, errors, expired/invalid states, success + sign-in. _(Req 3, 4)_
 - [x] 9. Sign-in shows link errors forwarded from the auth routes. _(Req 6.1)_
 - [x] 10. Typecheck, tests, build; deploy; live route checks with a throwaway account. _(all)_
-- [~] 11. Full email-to-password-change test with a real inbox (needs Max). _(Req 2.1)_
-- [~] 12. Supabase dashboard: Site URL, Redirect URLs, Reset Password template (needs Max). _(design: Root cause)_
+- [~] 11. Full email-to-password-change test with a real inbox. Passed in Edge on build `eb59272` (real email → its link → form → change → sign in). One more real-email run is needed on the final build `4c1434f` (its only change is forcing https); Supabase rate-limited further emails (HTTP 429). _(Req 2.1)_
+- [~] 12. Supabase dashboard + Vercel env: set `NEXT_PUBLIC_APP_URL` to https; confirm Site URL and Redirect URLs; optional token_hash template (needs Max). _(design: Root cause)_

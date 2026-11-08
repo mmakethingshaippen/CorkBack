@@ -112,3 +112,10 @@ The final writeup is built from this log, not from memory.
 
 - **Kiro IDE** — Built the real reset flow: a Forgot password link on sign-in, a `/forgot-password` email form calling Supabase `resetPasswordForEmail` with a live redirect and a non-looping "Check your email" confirmation, and an `/auth/reset-password` page that exchanges the PKCE code and sets a new password. Verified the recovery link redirects to the live site (not localhost) and that sign-in with the new password works while the old is rejected. Ran typecheck/build/tests and deployed; test user removed.
 - **Supabase Auth** — resetPasswordForEmail + exchangeCodeForSession + updateUser (PKCE browser flow); confirmed the live redirect URL is honored via admin generateLink.
+
+## Nov 6 — password-reset root-cause fix (2026-11-06)
+
+- **Specs (spec-driven)** — Wrote `.kiro/specs/password-reset` (requirements → design → tasks) before the fix, and updated the design as live findings changed it (http redirect; recovery sessions recorded as `amr: otp`).
+- **Kiro IDE** — Diagnosed by measurement rather than assumption: followed recovery links one hop and read where Supabase actually redirected, captured the real `redirect_to` the deployed form sends, and checked the session auth-method values. Built server auth callbacks, a homepage Site URL fallback, a recovery-gated reset page, and https normalization. Deployed from a clean git worktree so another session's uncommitted work never shipped.
+- **Real-browser testing** — Drove the deployed site in the installed Microsoft Edge via playwright-core (installed in a temp folder, not the project), including one complete real-email password reset. Tool removed afterwards.
+- **Supabase Auth** — resetPasswordForEmail, exchangeCodeForSession, verifyOtp, setSession, updateUser, all through the public anon client.

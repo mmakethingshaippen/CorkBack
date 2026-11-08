@@ -291,3 +291,30 @@ Fixed the broken "forgot password" (it had no reset page and sent no email). The
 **Redirect URL check (item 5):** `NEXT_PUBLIC_APP_URL` is the live URL (not localhost). Verified via the admin `generateLink({ type: recovery, redirectTo })` that the recovery link's effective `redirect_to` is exactly `https://corkback.vercel.app/auth/reset-password` — Supabase honored it, so the live URL is in the allowed redirect list (a non-allowed URL would be rewritten to the Site URL). `@supabase/ssr` browser client is `flowType: "pkce"`, so the link carries `?code=` which the reset page exchanges.
 
 **Verification (item 6):** typecheck ✓, build ✓ (routes `/forgot-password` and `/auth/reset-password` present), tests ✓ (57/57). Live reset test with a throwaway account: recovery link redirect = live reset page; set a new password; **sign-in with the NEW password succeeds and the OLD password is rejected**. (The PKCE code exchange is browser-only — the verifier is set on the forgot page and read on the reset page in the same browser; the headless harness proved the redirect target + password-change + sign-in, which is everything except the browser-held verifier step.) Live pages confirmed: sign-in has the Forgot link; `/forgot-password` serves the email form; `/auth/reset-password` serves the set-password page. Test user removed (0 residual).
+
+## 2026-11-06 — Kiro — Password-reset fix: recovery links landed on the homepage (live: https://corkback.vercel.app)
+
+Spec: `.kiro/specs/password-reset/` (requirements, design, tasks). Theme, colors, fonts, account model, and existing data unchanged.
+
+**Root cause (confirmed in a real browser on production).** The production Vercel env `NEXT_PUBLIC_APP_URL` is `http://corkback.vercel.app` (**http**). The forgot form sent `redirect_to=http://corkback.vercel.app/auth/reset-password`. Supabase only honours allow-listed URLs and silently falls back to the **Site URL** (`https://corkback.vercel.app/`, the homepage). The homepage ignored the credentials, so users saw the board. Probes also showed that any non-canonical origin (such as a Vercel deployment URL) falls back the same way. My previous turn's check had read only the redirect parameter inside the link, not the actual destination, and looked for the https string only, so it missed this.
+
+**Fixes (commits 49ed62a, eb59272, 4c1434f):**
+- `src/lib/appUrl.ts` (new): `normalizeAppUrl`/`getAppUrl` force https and a bare origin for non-local hosts; `safeNextPath` blocks open redirects.
+- `src/lib/authRecovery.ts` (new): recovery detection. Live finding: this project records recovery sessions as `amr: ["otp"]` (not `recovery`), so the auth routes set a 15-minute `cb_recovery` cookie; a bare `?code` counts as recovery when `recovery_sent_at` is within the last hour.
+- `src/app/auth/callback/route.ts` (new): server PKCE `exchangeCodeForSession` with the public anon client.
+- `src/app/auth/confirm/route.ts` (new): server `verifyOtp` for `token_hash` links (works cross-device).
+- `src/app/page.tsx` + `src/components/auth/AuthHashForwarder.tsx` (new): Site URL fallback. The homepage forwards `?code`, `?token_hash`, `#access_token`, and `#error_code` into the flow.
+- `src/app/auth/reset-password/ResetPasswordForm.tsx`: handles every credential form; form only for recovery sessions; New/Confirm password, 8-character minimum with guidance, loading state, mismatch/reuse errors; expired, invalid, other-browser, and already-signed-in states with "Send a new reset email"; success clears the marker, signs out, and links to sign-in.
+- `src/app/forgot-password/ForgotPasswordForm.tsx`: canonical https `redirectTo`; friendly rate-limit message.
+- `src/app/sign-in/page.tsx`: explains link errors forwarded from the auth routes.
+- `src/app/api/auth/sign-up/route.ts`: confirmation redirect also normalized (it had the same http defect).
+- `src/lib/authRecovery.test.ts` (new): 12 tests (recovery detection, recent recovery, https normalization, open-redirect guard).
+- No `console.*` calls; no service-role key in any flow code (it was used only by throwaway test scripts to create and delete test users).
+
+**Checks.** Clean-worktree builds (to exclude another session's uncommitted posting/scan work): typecheck ✓, tests 69/69 ✓, build ✓; deployed `4c1434f`. Browser E2E in real Edge against production:
+- Build eb59272: **real recovery email received; its actual link opened the new-password form**; mismatch and 8-character errors shown; refresh kept the form; update succeeded; new password signed in through the real form; old password rejected.
+- Build 4c1434f: the deployed form sends `redirect_to=https://corkback.vercel.app/auth/reset-password` (captured in the browser). Minted recovery links (Site URL fallback, a Vercel deployment URL, the default `/verify` link, `token_hash`) all open the form with no tokens left in the URL. The reported-bug path (link → homepage) completed a password change and the new password signed in. A reused link shows "This link has expired" with "Send a new reset email". A direct visit is explained; a signed-in non-recovering user is not offered the form; ordinary sign-in works (HTTP 200).
+- **Not yet verified on 4c1434f: a fresh real email.** Supabase returned HTTP 429 (email rate limit) after repeated test sends; the form showed the correct "wait a minute" message.
+- Cleanup: 0 residual test users; all accounts have profiles; real accounts untouched. One unrelated yopmail account created 2026-11-06 02:59 UTC was not created by these tests and was left alone.
+
+**Needs Max:** set the Vercel `NEXT_PUBLIC_APP_URL` to `https://corkback.vercel.app` and redeploy; confirm the Supabase Site URL and Redirect URLs; optionally switch to the token_hash template; run one real reset email on the live site.
