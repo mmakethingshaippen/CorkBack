@@ -1,12 +1,23 @@
 /**
- * Tell a password-recovery session apart from a normal sign-in by reading the
- * `amr` (authentication methods) claim in the session access token. Supabase
- * records `{ method: "recovery" }` for sessions created from a recovery link.
+ * Password-recovery session detection.
  *
- * Decoding happens locally (the token is not verified here; Supabase verifies
- * it on every API call). The token is never logged or returned.
+ * On this Supabase project, a session created from a recovery link records its
+ * auth method as "otp" (verified 2026-11-03), the same as an email
+ * confirmation, so the token alone cannot say "this is a password reset". The
+ * auth routes therefore mark a recovery explicitly with a short-lived cookie,
+ * and fall back to recent `recovery_sent_at` only when the link type is
+ * unknown. Nothing here logs or returns a token.
  */
-export function isRecoverySession(accessToken: string | null | undefined): boolean {
+
+/** Short-lived marker set by /auth/confirm, /auth/callback, or the reset page. */
+export const RECOVERY_COOKIE = "cb_recovery";
+export const RECOVERY_COOKIE_MAX_AGE = 15 * 60; // seconds
+
+/** A recovery email counts as "recent" for this long when the link type is unknown. */
+const RECENT_RECOVERY_MS = 60 * 60 * 1000;
+
+/** True if the token's amr claim says "recovery" (some GoTrue versions do). */
+export function hasRecoveryAmr(accessToken: string | null | undefined): boolean {
   if (!accessToken) return false;
   try {
     const payload = accessToken.split(".")[1];
@@ -14,9 +25,7 @@ export function isRecoverySession(accessToken: string | null | undefined): boole
     const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
     const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
     const json =
-      typeof atob === "function"
-        ? atob(padded)
-        : Buffer.from(padded, "base64").toString("utf8");
+      typeof atob === "function" ? atob(padded) : Buffer.from(padded, "base64").toString("utf8");
     const claims = JSON.parse(json) as { amr?: Array<{ method?: string } | string> };
     return (claims.amr ?? []).some((m) =>
       typeof m === "string" ? m === "recovery" : m?.method === "recovery",
@@ -24,4 +33,13 @@ export function isRecoverySession(accessToken: string | null | undefined): boole
   } catch {
     return false;
   }
+}
+
+/** True if the user requested a recovery email within the last hour. */
+export function isRecentRecovery(
+  user: { recovery_sent_at?: string | null } | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  const sent = user?.recovery_sent_at ? Date.parse(user.recovery_sent_at) : NaN;
+  return Number.isFinite(sent) && now - sent >= 0 && now - sent <= RECENT_RECOVERY_MS;
 }

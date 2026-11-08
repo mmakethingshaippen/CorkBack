@@ -9,7 +9,7 @@ const LINK_ERRORS: Record<string, string> = {
   link_expired: "That email link has expired or was already used. Sign in, or use Forgot password for a new link.",
   link_invalid: "That email link couldn't be used. Sign in, or use Forgot password for a new link.",
   other_browser:
-    "That email link was opened in a different browser from the one that requested it. Request a new link on this device.",
+    "That email link was opened in a different browser from the one that requested it, or it's no longer valid. Request a new link on this device.",
 };
 
 export default async function SignInPage({

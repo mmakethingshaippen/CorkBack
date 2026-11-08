@@ -5,8 +5,19 @@ import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/Field";
 import { NavyLink } from "@/components/ui/actions";
 import { createClient } from "@/lib/supabase/client";
-import { isRecoverySession } from "@/lib/authRecovery";
+import { RECOVERY_COOKIE, RECOVERY_COOKIE_MAX_AGE, hasRecoveryAmr } from "@/lib/authRecovery";
 import { RESET_PASSWORD_PATH } from "@/lib/appUrl";
+
+function hasRecoveryMarker(): boolean {
+  return document.cookie.split("; ").some((c) => c === `${RECOVERY_COOKIE}=1`);
+}
+function setRecoveryMarker() {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${RECOVERY_COOKIE}=1; Path=/; Max-Age=${RECOVERY_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
+}
+function clearRecoveryMarker() {
+  document.cookie = `${RECOVERY_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
 
 type Phase =
   | "checking"
@@ -77,12 +88,16 @@ export function ResetPasswordForm() {
           setPhase("expired");
           return;
         }
+        if (hash.get("type") === "recovery") setRecoveryMarker();
       }
 
-      // 4. Decide from the current session.
+      // 4. Decide from the current session. The form opens only for a session
+      //    that came from a recovery link (marker set by the auth routes or
+      //    above). A refresh keeps working while the marker is alive.
       const { data } = await supabase.auth.getSession();
       const session = data.session;
-      if (session && isRecoverySession(session.access_token)) setPhase("ready");
+      const recovering = Boolean(session) && (hasRecoveryMarker() || hasRecoveryAmr(session?.access_token));
+      if (recovering) setPhase("ready");
       else if (session) setPhase("signed_in");
       else setPhase("invalid");
     }
@@ -115,6 +130,7 @@ export function ResetPasswordForm() {
     }
 
     // End the recovery session so the user signs in fresh with the new password.
+    clearRecoveryMarker();
     await supabase.auth.signOut();
     setBusy(false);
     setPhase("saved");
@@ -131,7 +147,7 @@ export function ResetPasswordForm() {
       phase === "expired"
         ? "Reset links work once and only for a limited time. This one has expired or was already used."
         : phase === "other_browser"
-          ? "This link was opened in a different browser from the one you requested it in. Request a new email and open it on this device."
+          ? "This link was opened in a different browser from the one that requested it, or it's no longer valid. Request a new email and open it on this device."
           : "We couldn't find a valid reset request. The link may be incomplete, or this page was opened directly.";
     return (
       <div className="rounded-card border border-board bg-card p-4">

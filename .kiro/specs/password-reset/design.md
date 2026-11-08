@@ -26,12 +26,12 @@ email link (recommended template) ─▶ /auth/confirm?token_hash=…&type=recov
 Site URL fallback ─▶ /?code=… | /?token_hash=… | /#access_token=… ─▶ forwarded into the same routes
 /auth/callback  (server)  exchangeCodeForSession(code) ─▶ recovery session ─▶ /auth/reset-password
 /auth/confirm   (server)  verifyOtp({ type, token_hash }) ─▶ /auth/reset-password
-/auth/reset-password (client) ─▶ require a session whose AMR includes "recovery" ─▶ form ─▶ updateUser({ password }) ─▶ signOut ─▶ "Password updated" + Sign in
+/auth/reset-password (client) ─▶ require a session AND the cb_recovery marker ─▶ form ─▶ updateUser({ password }) ─▶ clear marker + signOut ─▶ "Password updated" + Sign in
 ```
 
 ## Components
 - `src/lib/appUrl.ts`: canonical origin helper. Uses `NEXT_PUBLIC_APP_URL` when present; uses the browser origin only on localhost; otherwise `https://corkback.vercel.app`. Also provides `safeNextPath()` against open redirects.
-- `src/lib/authRecovery.ts`: reads the session JWT `amr` claim to tell a recovery session from a normal sign-in. Decodes locally; never logged.
+- `src/lib/authRecovery.ts`: recovery detection. **Live finding:** on this project, recovery sessions record `amr: ["otp"]`, not `"recovery"`, so the token can't identify a reset (email confirmations are also `otp`). The auth routes therefore set a short-lived `cb_recovery` cookie (15 min, SameSite=Lax, Secure) when they establish a recovery session; the reset page sets it on the `#type=recovery` hash path. For a bare `?code` arriving through the homepage fallback (link type unknown), the callback treats it as a recovery if the user's `recovery_sent_at` is within the last hour. An `amr` of `recovery` is still honoured if a future GoTrue version emits it.
 - `src/app/auth/callback/route.ts`: server PKCE code exchange (reads the verifier cookie set by the browser client), then redirects by `next` or by AMR.
 - `src/app/auth/confirm/route.ts`: server `verifyOtp` for `token_hash` links. Works on any device or browser because it needs no stored code verifier.
 - `src/app/page.tsx` + `src/components/auth/AuthHashForwarder.tsx`: the Site URL fallback. The server redirects `?code` and `?token_hash`; a client component forwards hash tokens and errors.

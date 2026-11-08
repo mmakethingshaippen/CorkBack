@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { cookies } from "next/headers";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { RECOVERY_COOKIE, RECOVERY_COOKIE_MAX_AGE } from "@/lib/authRecovery";
 import { RESET_PASSWORD_PATH, safeNextPath } from "@/lib/appUrl";
 
 /**
@@ -33,6 +35,15 @@ export async function GET(request: NextRequest) {
     return failTo(expired ? "link_expired" : "link_invalid");
   }
 
-  const dest = isRecovery ? RESET_PASSWORD_PATH : safeNextPath(next, "/");
-  return NextResponse.redirect(new URL(dest, request.url));
+  if (isRecovery) {
+    // Mark the recovery so the new-password page opens its form.
+    (await cookies()).set(RECOVERY_COOKIE, "1", {
+      path: "/",
+      maxAge: RECOVERY_COOKIE_MAX_AGE,
+      sameSite: "lax",
+      secure: new URL(request.url).protocol === "https:",
+    });
+    return NextResponse.redirect(new URL(RESET_PASSWORD_PATH, request.url));
+  }
+  return NextResponse.redirect(new URL(safeNextPath(next, "/"), request.url));
 }
