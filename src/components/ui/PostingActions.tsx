@@ -186,8 +186,8 @@ export function PostingActions({
           {planButton("interested", "Interested", interestedText)}
         </div>
         <p className="mt-1 text-xs text-ink/60">
-          Tap your choice again to clear it. Only you can see your plan; everyone else sees only the
-          totals. When Friends launches, accepted friends will also see it while this posting is active.
+          Tap your choice again to clear it. Your friends can see your plan while this posting is active;
+          everyone else sees only the totals.
         </p>
       </div>
 

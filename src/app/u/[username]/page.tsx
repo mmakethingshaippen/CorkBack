@@ -8,6 +8,9 @@ import { getViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isFollowing } from "@/lib/follows";
 import { FollowButton } from "@/components/ui/FollowButton";
+import { ConnectButton } from "@/components/ui/ConnectButton";
+import { getRelationship } from "@/lib/connections";
+import type { Relationship } from "@/lib/connectionState";
 
 /**
  * Poster profile — the target of the navy @handle link. Shows the real username,
@@ -26,10 +29,16 @@ export default async function ProfilePage({
 
   const [postings, viewer] = await Promise.all([listPostingsByUsername(profile.username), getViewer()]);
   const isSelf = viewer?.id === profile.id;
-  const following =
-    viewer && !isSelf && !profile.id.startsWith("seed-")
-      ? await isFollowing(await createClient(), viewer.id, profile.id)
-      : false;
+  let following = false;
+  let relationship: Relationship = "none";
+  if (viewer && !isSelf && !profile.id.startsWith("seed-")) {
+    const supabase = await createClient();
+    // Follow and friendship are read separately: neither implies the other.
+    [following, relationship] = await Promise.all([
+      isFollowing(supabase, viewer.id, profile.id),
+      getRelationship(supabase, viewer.id, profile.id),
+    ]);
+  }
 
   return (
     <main className="min-h-screen pb-24">
@@ -40,6 +49,12 @@ export default async function ProfilePage({
         <FollowButton
           username={profile.username}
           initialFollowing={following}
+          signedIn={viewer !== null}
+          isSelf={isSelf}
+        />
+        <ConnectButton
+          username={profile.username}
+          initialState={relationship}
           signedIn={viewer !== null}
           isSelf={isSelf}
         />
