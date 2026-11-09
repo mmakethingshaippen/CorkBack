@@ -34,10 +34,23 @@ Stop for Max's approval after the plan and after each stage. No production deplo
 - Home rail uses the same one-column tilted-card grid as the old Following/profile; check it at desktop widths.
 
 ## Stage 3 — Friends
-- [ ] 3.1 Migration part 3: connections insert forces `status = 'pending'`; pair-unique index; addressee-only accept; party delete; then `viewer_is_friend_of()` and the plans "self or friend on active posting" read policy.
-- [ ] 3.2 `/api/connections` (send, cancel, accept, decline, remove; reciprocal handling); username search API.
-- [ ] 3.3 `/friends`: search, incoming, outgoing, friends, friends' activity per privacy policy; connect control on profiles.
-- [ ] 3.4 Verify both sides; requester cannot self-accept; friendship does not create a follow; removing a friend revokes plan visibility. Logs. **Stop for approval.**
+- [x] 3.1 Migration part 3 **applied by Max; verify_admin and verify_roles passed**: `supabase/stage6_social_part3.sql` (+ `_preflight`, `_verify_admin`, `_verify_roles`, `_rollback`).
+  - One row per pair in either direction (unique least/greatest index); `no_self_connect` kept.
+  - Column grants: clients may insert only the participants and update only status, so participants are immutable.
+  - Policies: requester-insert pending, recipient-only pending→accepted, either-party delete.
+  - `viewer_is_friend_of()`; plans "self or friend on active posting" read. Likes stay owner-only.
+- [~] 3.2 `POST /api/connections` (send/cancel/accept/decline/remove; idempotent repeats; 409 `incoming_exists` / `already_friends` / `state_changed`, including the simultaneous-reciprocal 23505 case) and `GET /api/users/search` (signed-in, prefix, escaped, 20 max, usernames only).
+- [~] 3.3 `/friends`: search with loading/empty/error states; incoming, outgoing and friends lists with per-row pending and confirm-before-remove; friends' plans on active postings; loading.tsx; signed-out and error states. `ConnectButton` on profiles, separate from Follow. Posting plan text updated.
+- [~] 3.4 Verified 2026-11-08 against a local production build of the exact preview source and the live DB:
+  - REST/RLS with real user JWTs: 21/21, including 10 rounds of truly concurrent reciprocal inserts.
+  - Three-session Edge suite (A, B, unrelated C): 51/51.
+  - Found and fixed: an expired-session message vanished because the hook refreshed into the signed-out view.
+  - Preview deployed; not browser-tested directly (protected). **Stopped for approval before Stage 4.**
+
+## Release items (before production)
+1. Sign-up creates exactly one usable profile, and a username or profile-creation failure doesn't strand the account. Diagnose the `on_auth_user_created` trigger (part 2 check F5 / part 3 preflight `trigger`) before proposing any fix. Don't apply `stage5_profile_trigger.sql` blindly.
+2. Homepage card overlap at desktop and mobile widths: check, and fix if reproduced.
+3. Test the protected previews directly once Max signs in to Vercel. Never weaken Deployment Protection or add a bypass secret.
 
 ## Stage 4 — Messaging
 - [ ] 4.1 Reproduce the composer issue in a browser and record the cause.

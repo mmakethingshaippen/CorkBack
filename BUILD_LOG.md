@@ -391,3 +391,35 @@ Max approved deploying only the read-only expiry route.
 - **Preview:** https://cork-back-kpbs8gt2g-max-082a.vercel.app (`dpl_8SJHk17KK4ngCWjHCCbgXKJipCjk`). It is byte-identical to the tested source (143/143) and protected; it was not browser-tested directly.
 - **Cleanup:** 3 [TEST] postings and 3 accounts deleted. Residue is zero, totals match baseline, and ffe92f35 is unchanged. An empty `%TEMP%\cb_s2` folder tree remains, locked by Windows; it has no files.
 - **Profile trigger (recorded accurately):** auth users created via the admin API received no profile row, so the `on_auth_user_created` trigger is absent or not firing in this database. That's an observation, not a catalog confirmation; F5 in the part 2 check confirms it. The sign-up route creates profiles itself. Release gate: verify a normal sign-up creates exactly one usable profile, and don't apply `stage5_profile_trigger.sql` blindly.
+
+## Nov 8: Stage 3, Friends (2026-11-08)
+
+- **Git:** on `feature/social`, Stage 1 (f4cade7), Stage 2 (3f367db) and docs (b6174f9) were committed separately. The Stage 1 commit was built from Stage 1 versions of two mixed files and checked on its own: typecheck, lint, 121 tests, build. The cron hotfix merge 4e0f563 is preserved. Nothing pushed; main untouched.
+- **Database:** Max applied part 3; its admin and role checks passed. What it enforces:
+  - one row per pair of users in either direction
+  - no self-requests
+  - participants can't be changed (column grants)
+  - only the recipient accepts
+  - either participant can delete
+  - friends see plans only on active postings; likes stay owner-only
+- **Code:**
+  - `POST /api/connections` (send/cancel/accept/decline/remove; idempotent; 409 incoming_exists/already_friends/state_changed).
+  - `GET /api/users/search` (signed-in, prefix, `_` escaped, usernames only).
+  - `/friends`: search, three lists, friends' plans, loading/empty/error/signed-out states.
+  - `ConnectButton` on profiles, separate from Follow.
+- **Checks:**
+  - typecheck, lint, 132/132 unit tests, production build
+  - REST with real JWTs: 21/21. Simultaneous A→B/B→A inserts always left exactly one pending row (10/10 rounds), and the requester and outsiders can't accept, change participants, read or delete.
+  - Three-session Edge suite: 51/51.
+- **Edge suite coverage:**
+  - search validation, self excluded, literal underscore
+  - send, cancel, decline and accept, persisting across refresh and sign-out/in
+  - stale accept after cancel; simultaneous clicks from two sessions (3 rounds: one pending row, both UIs agree)
+  - friends' plans on active postings only; likes stay private
+  - follow independent both ways
+  - unrelated C sees nothing
+  - removal revoking on the next load, including a stale tab
+  - rapid clicks (1 request); network, 500 and expired-session failures
+  - signed-out states; 390/1280 layouts; loading state
+- **Bug found and fixed:** on an expired session, the action hook refreshed into the signed-out view and the "sign in again" message disappeared. It now keeps the message and doesn't refresh on 401.
+- **Cleanup:** disposable accounts and [TEST] postings deleted; zero residue; totals at baseline; ffe92f35 unchanged.
