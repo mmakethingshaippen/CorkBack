@@ -13,6 +13,11 @@ import { getViewer } from "@/lib/auth";
 import { MessagePoster } from "@/components/ui/MessagePoster";
 import { PromoteToggle } from "@/components/ui/PromoteToggle";
 import { ShareButton } from "@/components/ui/ShareButton";
+import { isPostingActive } from "@/lib/lifecycle";
+import { createClient } from "@/lib/supabase/server";
+import { getFriendPlans, getViewerReaction } from "@/lib/reactions";
+import { isUuid } from "@/lib/reactionState";
+import type { PlanKind } from "@/lib/types";
 
 export default async function PostingPage({
   params,
@@ -24,22 +29,51 @@ export default async function PostingPage({
   if (!posting) notFound();
   const signedIn = viewer !== null;
   const isOwnPosting = viewer?.username === posting.authorUsername;
+  const active = isPostingActive(posting);
 
-  const dateLabel = posting.eventDate
-    ? new Date(posting.eventDate).toLocaleDateString(undefined, {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
-    : null;
+  // The viewer's own like/plan and friends' plans come from server reads (RLS
+  // decides visibility), so the page shows saved state after refresh/sign-in.
+  let mine: { liked: boolean; plan: PlanKind | null } = { liked: false, plan: null };
+  let friendPlans: { username: string; kind: PlanKind }[] = [];
+  if (viewer && isUuid(posting.id)) {
+    const supabase = await createClient();
+    [mine, friendPlans] = await Promise.all([
+      getViewerReaction(supabase, posting.id, viewer.id),
+      active ? getFriendPlans(supabase, posting.id, viewer.id) : Promise.resolve([]),
+    ]);
+  }
+
+  // event_date is a calendar date: format it without shifting time zones.
+  const formatDate = (d: string) =>
+    new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", {
+      timeZone: "UTC",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  const dateLabel = posting.eventDate ? formatDate(posting.eventDate) : null;
+  const endParts: string[] = [];
+  if (posting.endDate && posting.endDate !== posting.eventDate) endParts.push(formatDate(posting.endDate));
+  if (posting.endTime) endParts.push(`${endParts.length ? "at " : ""}${posting.endTime.slice(0, 5)}`);
+  const endLabel = endParts.length ? `Ends ${endParts.join(" ")}` : null;
 
   return (
     <main className="min-h-screen pb-24">
       <TopBar back={{ href: "/", label: "Back to map" }} />
 
       <article className="space-y-4 px-4">
-        {posting.isPromoted ? (
+        {!active ? (
+          <div role="status" className="rounded-card border-2 border-board bg-board/40 p-4">
+            <p className="font-bold text-ink">This posting has ended</p>
+            <p className="mt-1 text-sm text-ink/70">
+              It is no longer on the map. Details and final counts are kept here. Likes and plans are
+              closed, and you can still message the poster.
+            </p>
+          </div>
+        ) : null}
+
+        {posting.isPromoted && active ? (
           <p className="text-xs font-bold uppercase tracking-wide text-ink/50">Promoted</p>
         ) : null}
 
@@ -73,6 +107,11 @@ export default async function PostingPage({
               <ClockIcon className="text-ink/60" /> <dd>{posting.eventTime}</dd>
             </div>
           ) : null}
+          {endLabel ? (
+            <div className="flex items-center gap-2">
+              <ClockIcon className="text-ink/60" /> <dd>{endLabel}</dd>
+            </div>
+          ) : null}
           <div className="flex items-center gap-2">
             <MapPinIcon className="text-ink/60" /> <dd>{posting.placeLabel}</dd>
           </div>
@@ -80,7 +119,7 @@ export default async function PostingPage({
 
         <p className="whitespace-pre-line leading-relaxed text-ink">{posting.body}</p>
 
-        {posting.rsvpUrl ? (
+        {posting.rsvpUrl && active ? (
           <a
             href={posting.rsvpUrl}
             target="_blank"
@@ -91,7 +130,16 @@ export default async function PostingPage({
           </a>
         ) : null}
 
-        <PostingActions likeCount={posting.likeCount} signedIn={signedIn} />
+        <PostingActions
+          postingId={posting.id}
+          signedIn={signedIn}
+          ended={!active}
+          initial={{
+            ...mine,
+            counts: { likes: posting.likeCount, going: posting.goingCount, interested: posting.interestedCount },
+          }}
+          friendPlans={friendPlans}
+        />
 
         <div className="rounded-card border border-board bg-board/30 p-4">
           <div className="flex items-center justify-between">
@@ -113,7 +161,7 @@ export default async function PostingPage({
             />
           </div>
           {/* Owner-only promotion control. */}
-          {isOwnPosting ? (
+          {isOwnPosting && active ? (
             <div className="mt-3">
               <PromoteToggle postingId={posting.id} initialPromoted={posting.isPromoted} />
             </div>

@@ -28,6 +28,12 @@ export function ReviewForm() {
   const [body, setBody] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("");
+  // A scanned date whose year was not printed on the flyer is uncertain: the
+  // poster must confirm the full date before publishing. Never assume silently.
+  const [yearUncertain, setYearUncertain] = useState(false);
+  const [dateConfirmed, setDateConfirmed] = useState(false);
   const [placeLabel, setPlaceLabel] = useState("");
   const [category, setCategory] = useState<string>("community");
   const [rsvpUrl, setRsvpUrl] = useState("");
@@ -43,6 +49,7 @@ export function ReviewForm() {
       setTitle(e.title ?? "");
       setBody(e.body ?? "");
       setEventDate(e.eventDate ?? "");
+      setYearUncertain(Boolean(e.eventDate) && e.eventDateYearPrinted !== true);
       setEventTime(e.eventTime ?? "");
       setPlaceLabel(e.placeLabel ?? "");
       setCategory(e.categorySlug ?? "community");
@@ -50,6 +57,8 @@ export function ReviewForm() {
     }
     setLoaded(true);
   }, []);
+
+  const needsDateConfirmation = yearUncertain && Boolean(eventDate);
 
   function requestLocation() {
     if (!("geolocation" in navigator)) {
@@ -67,6 +76,11 @@ export function ReviewForm() {
 
   async function publish(e: React.FormEvent) {
     e.preventDefault();
+    if (needsDateConfirmation && !dateConfirmed) {
+      setStatus("Confirm the full event date, including the year, before publishing.");
+      document.getElementById("dateConfirmed")?.focus();
+      return;
+    }
     if (!coords) {
       setStatus("Allow your current location to place the pin before publishing.");
       return;
@@ -81,6 +95,10 @@ export function ReviewForm() {
         categorySlug: category,
         eventDate: eventDate || null,
         eventTime: eventTime || null,
+        endDate: endDate || null,
+        endTime: endTime || null,
+        dateNeedsConfirmation: needsDateConfirmation,
+        dateConfirmed: needsDateConfirmation ? dateConfirmed : undefined,
         placeLabel,
         rsvpUrl: rsvpUrl || null,
         expiry,
@@ -99,14 +117,78 @@ export function ReviewForm() {
 
   if (!loaded) return null;
 
+  const fullDateLabel = eventDate
+    ? new Date(`${eventDate}T00:00:00Z`).toLocaleDateString("en-US", {
+        timeZone: "UTC",
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "";
+
   return (
     <form onSubmit={publish} className="space-y-5">
       <Field label="Title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} />
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Event date" name="eventDate" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+        <Field
+          label="Event date"
+          name="eventDate"
+          type="date"
+          value={eventDate}
+          onChange={(e) => {
+            setEventDate(e.target.value);
+            setDateConfirmed(false); // a changed date must be confirmed again
+          }}
+          aria-describedby={needsDateConfirmation ? "year-warning" : undefined}
+        />
         <Field label="Time" name="eventTime" value={eventTime} onChange={(e) => setEventTime(e.target.value)} placeholder="19:30" />
       </div>
+
+      {needsDateConfirmation ? (
+        <div id="year-warning" className="rounded-card border-2 border-dark-red bg-white p-4 text-sm">
+          <p className="font-bold text-ink">Check the year</p>
+          <p className="mt-1 text-ink/80">
+            The flyer does not show a year, so the year above is a guess. Check the full date before
+            publishing.
+          </p>
+          <label htmlFor="dateConfirmed" className="mt-2 flex items-start gap-2 text-ink">
+            <input
+              id="dateConfirmed"
+              type="checkbox"
+              checked={dateConfirmed}
+              onChange={(e) => setDateConfirmed(e.target.checked)}
+              className="mt-1 h-4 w-4 accent-deep-navy"
+            />
+            <span>
+              I checked the full date: <span className="font-bold">{fullDateLabel}</span>
+            </span>
+          </label>
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          label="End date (optional)"
+          name="endDate"
+          type="date"
+          value={endDate}
+          min={eventDate || undefined}
+          onChange={(e) => setEndDate(e.target.value)}
+        />
+        <Field
+          label="End time (optional)"
+          name="endTime"
+          type="time"
+          value={endTime}
+          onChange={(e) => setEndTime(e.target.value)}
+        />
+      </div>
+      <p className="-mt-3 text-xs text-ink/60">
+        Without an end, an event comes down at the end of its event day, in local time where it is
+        pinned.
+      </p>
 
       <Field
         label="Event place"

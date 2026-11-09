@@ -41,7 +41,7 @@ export async function GET(req: Request) {
   // Active postings only (not deleted, not expired). Past-event is filtered in match.
   const { data: postingRows, error: pErr } = await supabase
     .from("postings")
-    .select("id, author_id, lat, lng, expires_at, event_date, deleted_at, title, event_time, place_label, categories(slug)")
+    .select("id, author_id, lat, lng, expires_at, event_date, end_date, end_time, time_zone, deleted_at, title, event_time, place_label, categories(slug)")
     .is("deleted_at", null)
     .gt("expires_at", nowIso);
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
@@ -76,6 +76,9 @@ export async function GET(req: Request) {
         lng: Number(p.lng),
         expiresAt: String(p.expires_at),
         eventDate: (p.event_date as string) ?? null,
+        endDate: (p.end_date as string) ?? null,
+        endTime: (p.end_time as string) ?? null,
+        timeZone: (p.time_zone as string) ?? null,
         deletedAt: (p.deleted_at as string) ?? null,
       } satisfies PostingForMatch,
       email: {

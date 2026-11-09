@@ -11,7 +11,7 @@ export default async function ScanPage() {
 
   return (
     <main className="min-h-screen pb-24">
-      <TopBar back={{ href: "/", label: "Scan a flyer" }} />
+      <TopBar back={{ href: "/", label: "Back to map" }} />
       <div className="px-4">
         <h1 className="text-2xl font-bold text-ink">Give paper a place on the map.</h1>
         <p className="mt-1 text-ink/70">Fit the whole flyer inside the frame. You can check and edit every detail next.</p>

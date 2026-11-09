@@ -28,6 +28,8 @@ export const SEED_POSTINGS: Posting[] = [
     isPromoted: false,
     authorUsername: "northlondonnotes",
     likeCount: 38,
+    goingCount: 0,
+    interestedCount: 0,
     createdAt: "2026-10-28T10:00:00.000Z",
   },
   {
@@ -47,6 +49,8 @@ export const SEED_POSTINGS: Posting[] = [
     isPromoted: false,
     authorUsername: "lenahoffmann",
     likeCount: 17,
+    goingCount: 0,
+    interestedCount: 0,
     createdAt: "2026-10-24T18:00:00.000Z",
   },
   {
@@ -66,6 +70,8 @@ export const SEED_POSTINGS: Posting[] = [
     isPromoted: false,
     authorUsername: "colectivoroma",
     likeCount: 24,
+    goingCount: 0,
+    interestedCount: 0,
     createdAt: "2026-11-01T09:00:00.000Z",
   },
 ];

@@ -1,10 +1,11 @@
 import "server-only";
 import { createClient } from "./supabase/server";
-import { isActive } from "./domain";
+import { isPostingActive } from "./lifecycle";
 import { orderWithPromoted } from "./promotion";
+import { getReactionCounts } from "./reactions";
 import type { Posting } from "./types";
 import { SEED_POSTINGS, findSeedPosting } from "./seed";
-import type { PostgrestError } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Convert a raw Supabase/Postgrest error into a readable Error, logging the
@@ -29,6 +30,12 @@ function toReadableError(context: string, error: PostgrestError): Error {
         `Apply supabase/schema.sql in your Supabase project (see SETUP.md).`,
     );
   }
+  if (error.code === "42703") {
+    return new Error(
+      `Database is missing a column (${error.code}): ${error.message}. ` +
+        `Apply supabase/stage6_social_part1.sql in your Supabase project.`,
+    );
+  }
   return new Error(`Failed to load postings (${error.code ?? "unknown"}): ${error.message}`);
 }
 
@@ -45,10 +52,16 @@ function supabaseConfigured(): boolean {
   );
 }
 
+// Disambiguate the embeds by naming the foreign keys: postings reaches profiles
+// through several relationships (author_id, likes, plans, hidden_postings), so
+// PostgREST needs the exact FK (PGRST201). Counts are NOT embedded: likes rows
+// are private, so counts come from posting_reaction_counts.
+const POSTING_COLUMNS =
+  "id, title, body, flyer_url, rsvp_url, event_date, event_time, end_date, end_time, time_zone, place_label, lat, lng, expiry, expires_at, is_promoted, created_at, profiles!postings_author_id_fkey(username), categories(slug)";
+
 function rowToPosting(r: Record<string, unknown>): Posting {
   const profiles = r.profiles as { username?: string } | null;
   const categories = r.categories as { slug?: string } | null;
-  const likes = (r.likes as { count?: number }[] | null) ?? [];
   return {
     id: String(r.id),
     title: String(r.title),
@@ -58,6 +71,9 @@ function rowToPosting(r: Record<string, unknown>): Posting {
     rsvpUrl: (r.rsvp_url as string) ?? null,
     eventDate: (r.event_date as string) ?? null,
     eventTime: (r.event_time as string) ?? null,
+    endDate: (r.end_date as string) ?? null,
+    endTime: (r.end_time as string) ?? null,
+    timeZone: (r.time_zone as string) ?? null,
     placeLabel: String(r.place_label ?? ""),
     lat: Number(r.lat),
     lng: Number(r.lng),
@@ -65,57 +81,63 @@ function rowToPosting(r: Record<string, unknown>): Posting {
     expiresAt: String(r.expires_at),
     isPromoted: Boolean(r.is_promoted),
     authorUsername: profiles?.username ?? "unknown",
-    likeCount: likes[0]?.count ?? 0,
+    likeCount: 0,
+    goingCount: 0,
+    interestedCount: 0,
     createdAt: String(r.created_at),
   };
 }
 
-/** Active (non-expired, non-deleted, event-not-past) postings for the map. */
+async function withCounts(supabase: SupabaseClient, postings: Posting[]): Promise<Posting[]> {
+  const counts = await getReactionCounts(supabase, postings.map((p) => p.id));
+  return postings.map((p) => {
+    const c = counts.get(p.id);
+    return c ? { ...p, likeCount: c.likes, goingCount: c.going, interestedCount: c.interested } : p;
+  });
+}
+
+/** Active (not expired, not deleted, event not over) postings for the map. */
 export async function listActivePostings(now = new Date()): Promise<Posting[]> {
   if (!supabaseConfigured()) {
-    const activeSeed = SEED_POSTINGS.filter((p) =>
-      isActive(now, new Date(p.expiresAt), p.eventDate ? new Date(p.eventDate) : null, null),
-    );
-    return orderWithPromoted(activeSeed);
+    return orderWithPromoted(SEED_POSTINGS.filter((p) => isPostingActive(p, now)));
   }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("postings")
-    .select(
-      // Disambiguate the embeds by naming the foreign keys: postings reaches
-      // profiles through several relationships (author_id, likes, plans,
-      // hidden_postings), so PostgREST needs the exact FK (PGRST201).
-      "id, title, body, flyer_url, rsvp_url, event_date, event_time, place_label, lat, lng, expiry, expires_at, is_promoted, created_at, profiles!postings_author_id_fkey(username), categories(slug), likes!likes_posting_id_fkey(count)",
-    )
+    .select(POSTING_COLUMNS)
     .is("deleted_at", null)
     .gt("expires_at", now.toISOString());
   if (error) throw toReadableError("listActivePostings", error);
   const active = (data ?? [])
     .map((r) => rowToPosting(r as Record<string, unknown>))
-    .filter((p) =>
-      isActive(now, new Date(p.expiresAt), p.eventDate ? new Date(p.eventDate) : null, null),
-    );
-  return orderWithPromoted(active);
+    .filter((p) => isPostingActive(p, now));
+  return orderWithPromoted(await withCounts(supabase, active));
 }
 
-export async function getPosting(id: string, now = new Date()): Promise<Posting | null> {
+/**
+ * A single posting by id, INCLUDING ended postings (the posting page renders
+ * them read-only). Deleted postings are not returned. Use `isPostingActive` to
+ * decide whether reactions are allowed.
+ */
+export async function getPosting(id: string): Promise<Posting | null> {
   if (!supabaseConfigured()) {
-    const p = findSeedPosting(id);
-    return p ?? null;
+    return findSeedPosting(id) ?? null;
   }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("postings")
-    .select(
-      // Same FK disambiguation as listActivePostings (PGRST201).
-      "id, title, body, flyer_url, rsvp_url, event_date, event_time, place_label, lat, lng, expiry, expires_at, is_promoted, created_at, deleted_at, profiles!postings_author_id_fkey(username), categories(slug), likes!likes_posting_id_fkey(count)",
-    )
+    .select(POSTING_COLUMNS)
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
-  if (error) throw toReadableError("getPosting", error);
+  if (error) {
+    // A malformed id is "not found", not a server error.
+    if (error.code === "22P02") return null;
+    throw toReadableError("getPosting", error);
+  }
   if (!data) return null;
-  return rowToPosting(data as Record<string, unknown>);
+  const [posting] = await withCounts(supabase, [rowToPosting(data as Record<string, unknown>)]);
+  return posting;
 }
 
 /**
@@ -147,29 +169,19 @@ export async function listPostingsByUsername(
 ): Promise<Posting[]> {
   if (!supabaseConfigured()) {
     return orderWithPromoted(
-      SEED_POSTINGS.filter(
-        (p) =>
-          p.authorUsername === username &&
-          isActive(now, new Date(p.expiresAt), p.eventDate ? new Date(p.eventDate) : null, null),
-      ),
+      SEED_POSTINGS.filter((p) => p.authorUsername === username && isPostingActive(p, now)),
     );
   }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("postings")
-    .select(
-      "id, title, body, flyer_url, rsvp_url, event_date, event_time, place_label, lat, lng, expiry, expires_at, is_promoted, created_at, profiles!postings_author_id_fkey(username), categories(slug), likes!likes_posting_id_fkey(count)",
-    )
+    .select(POSTING_COLUMNS)
     .eq("profiles.username", username)
     .is("deleted_at", null)
     .gt("expires_at", now.toISOString());
   if (error) throw toReadableError("listPostingsByUsername", error);
   const active = (data ?? [])
     .map((r) => rowToPosting(r as Record<string, unknown>))
-    .filter(
-      (p) =>
-        p.authorUsername === username &&
-        isActive(now, new Date(p.expiresAt), p.eventDate ? new Date(p.eventDate) : null, null),
-    );
-  return orderWithPromoted(active);
+    .filter((p) => p.authorUsername === username && isPostingActive(p, now));
+  return orderWithPromoted(await withCounts(supabase, active));
 }

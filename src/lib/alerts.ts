@@ -1,4 +1,5 @@
 import { haversineMeters } from "./domain";
+import { isPostingActive } from "./lifecycle";
 
 /**
  * Stage 2 — radius email alert matching. Pure, DB-free, testable.
@@ -41,6 +42,9 @@ export interface PostingForMatch {
    *  accept the fields to allow a pure end-to-end match in tests. */
   expiresAt: string;
   eventDate: string | null;
+  endDate?: string | null;
+  endTime?: string | null;
+  timeZone?: string | null;
   deletedAt: string | null;
 }
 
@@ -89,15 +93,8 @@ export function alertMatchesPosting(
   // Hidden postings never notify their hider.
   if (opts.hidden) return false;
 
-  // Active: not deleted, not expired, not past its event date.
-  if (posting.deletedAt) return false;
-  const expiresAt = new Date(posting.expiresAt);
-  if (now.getTime() >= expiresAt.getTime()) return false;
-  if (posting.eventDate) {
-    const endOfEvent = new Date(posting.eventDate);
-    endOfEvent.setHours(23, 59, 59, 999);
-    if (now.getTime() > endOfEvent.getTime()) return false;
-  }
+  // Active: the shared lifecycle rule (expiry, event end in the posting's zone).
+  if (!isPostingActive(posting, now)) return false;
 
   // Within the radius.
   if (!withinRadius(alert, posting)) return false;
