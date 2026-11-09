@@ -8,7 +8,9 @@ import { PostingActions } from "@/components/ui/PostingActions";
 import { NavyLink } from "@/components/ui/actions";
 import { CalendarIcon, ClockIcon, MapPinIcon, ExternalLinkIcon } from "@/components/icons";
 import { categoryLabel } from "@/lib/categories";
-import { getPosting } from "@/lib/postings";
+import { getPosting, getProfileByUsername } from "@/lib/postings";
+import { isFollowing } from "@/lib/follows";
+import { FollowButton } from "@/components/ui/FollowButton";
 import { getViewer } from "@/lib/auth";
 import { MessagePoster } from "@/components/ui/MessagePoster";
 import { PromoteToggle } from "@/components/ui/PromoteToggle";
@@ -35,11 +37,14 @@ export default async function PostingPage({
   // decides visibility), so the page shows saved state after refresh/sign-in.
   let mine: { liked: boolean; plan: PlanKind | null } = { liked: false, plan: null };
   let friendPlans: { username: string; kind: PlanKind }[] = [];
+  let followingAuthor = false;
   if (viewer && isUuid(posting.id)) {
     const supabase = await createClient();
-    [mine, friendPlans] = await Promise.all([
+    const author = isOwnPosting ? null : await getProfileByUsername(posting.authorUsername);
+    [mine, friendPlans, followingAuthor] = await Promise.all([
       getViewerReaction(supabase, posting.id, viewer.id),
       active ? getFriendPlans(supabase, posting.id, viewer.id) : Promise.resolve([]),
+      author ? isFollowing(supabase, viewer.id, author.id) : Promise.resolve(false),
     ]);
   }
 
@@ -149,9 +154,14 @@ export default async function PostingPage({
           <div className="mt-1">
             <PosterHandle username={posting.authorUsername} />
           </div>
-          <p className="mt-2 text-sm text-ink/70">
-            Follow and Connect are not part of this release.
-          </p>
+          <div className="mt-3">
+            <FollowButton
+              username={posting.authorUsername}
+              initialFollowing={followingAuthor}
+              signedIn={signedIn}
+              isSelf={isOwnPosting}
+            />
+          </div>
           <div className="mt-3">
             <MessagePoster
               posterUsername={posting.authorUsername}

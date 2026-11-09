@@ -141,6 +141,34 @@ export async function getPosting(id: string): Promise<Posting | null> {
 }
 
 /**
+ * Candidate rows for the Following feed: non-deleted, unexpired postings by the
+ * given authors, paired with their author id. The caller applies the shared
+ * lifecycle rule and ordering (buildFollowingFeed). Counts are attached.
+ */
+export async function listPostingRowsByAuthorIds(
+  authorIds: string[],
+  now = new Date(),
+): Promise<{ posting: Posting; authorId: string }[]> {
+  if (authorIds.length === 0 || !supabaseConfigured()) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("postings")
+    .select(`author_id, ${POSTING_COLUMNS}`)
+    .in("author_id", authorIds.slice(0, 500))
+    .is("deleted_at", null)
+    .gt("expires_at", now.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw toReadableError("listPostingRowsByAuthorIds", error);
+  const rows = (data ?? []).map((r) => ({
+    authorId: String((r as Record<string, unknown>).author_id),
+    posting: rowToPosting(r as Record<string, unknown>),
+  }));
+  const withC = await withCounts(supabase, rows.map((r) => r.posting));
+  return rows.map((r, i) => ({ authorId: r.authorId, posting: withC[i] }));
+}
+
+/**
  * Look up a public profile by username. Returns null when no profile row exists
  * (so callers can render a not-found state instead of a generic page).
  */
