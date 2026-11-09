@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 /**
- * Expiry sweep (Vercel cron). Hides postings whose preset expiry has passed, or
- * whose event date is in the past. Uses the service-role key (server only) so it
- * can act across all rows; guarded by CRON_SECRET.
+ * Expiry sweep (Vercel cron). READ-ONLY: it no longer soft-deletes anything.
  *
- * The map query already filters by expires_at and event date, so this sweep is a
- * durable backstop that soft-deletes stale rows.
+ * Ended postings keep a read-only detail page, so they must not be deleted
+ * automatically. Expired and past-event postings are already kept off the map
+ * by the read queries, which filter by expires_at and event date. `deleted_at`
+ * is now set only when an author deletes a posting.
+ *
+ * The job keeps its CRON_SECRET guard and configuration check, and reports how
+ * many non-deleted postings are past expiry or past their event date (the rows
+ * it used to delete), for monitoring.
  */
 export const runtime = "nodejs";
 
@@ -29,12 +33,12 @@ export async function GET(req: Request) {
   const nowIso = new Date().toISOString();
   const today = new Date().toISOString().slice(0, 10);
 
-  const { error } = await supabase
+  const { count, error } = await supabase
     .from("postings")
-    .update({ deleted_at: nowIso })
+    .select("id", { count: "exact", head: true })
     .is("deleted_at", null)
     .or(`expires_at.lte.${nowIso},event_date.lt.${today}`);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, sweptAt: nowIso });
+  return NextResponse.json({ ok: true, sweptAt: nowIso, deleted: 0, pastTakedown: count ?? 0 });
 }
