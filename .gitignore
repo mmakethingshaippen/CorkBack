@@ -38,3 +38,6 @@ yarn-error.log*
 
 .vercel
 .env*
+
+# MapLibre worker copied from node_modules by next.config.mjs
+/public/maplibre/

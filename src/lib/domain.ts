@@ -168,3 +168,13 @@ export function cardTilt(id: string, prevTilt: number | null): number {
   }
   return tilt;
 }
+
+/**
+ * Vertical margin that clears a tilted card's corner lift, (width / 2) x
+ * sin|tilt|, written as a percentage of the card's own width (a percentage
+ * margin on a grid item resolves against its grid-area width) plus a small gap.
+ */
+export function tiltClearance(tiltDeg: number): string {
+  const pct = (Math.sin((Math.abs(tiltDeg) * Math.PI) / 180) / 2) * 100;
+  return `calc(${pct.toFixed(3)}% + 6px)`;
+}

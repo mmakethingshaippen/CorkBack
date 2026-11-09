@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import maplibregl from "maplibre-gl";
+import { maplibre, maplibregl } from "./maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Posting } from "@/lib/types";
 import { CATEGORIES } from "@/lib/categories";
 import { CategoryChip } from "@/components/ui/CategoryChip";
-import { PostingCard } from "@/components/ui/PostingCard";
-import { tiltFor } from "@/components/ui/Card";
+import { PostingCardGrid } from "@/components/ui/PostingCardGrid";
 
 /**
  * Home map: local-first. Centering order on load:
@@ -213,7 +212,7 @@ export function HomeMap({
     const start = saved ?? homePoint ?? BERKELEY;
     const startZoom = saved?.zoom ?? (saved ? TOWN_ZOOM : homePoint ? TOWN_ZOOM : TOWN_ZOOM);
 
-    const map = new maplibregl.Map({
+    const map = new (maplibre().Map)({
       container: containerRef.current,
       style: STYLE,
       center: [start.lng, start.lat],
@@ -393,15 +392,6 @@ export function HomeMap({
     }
   }
 
-  // Pre-compute tilts so adjacent cards never mirror (Choice B).
-  let prev: number | null = null;
-  const withTilt = filtered.map((p) => {
-    const t = tiltFor(p.id, prev);
-    const entry = { posting: p, prevTilt: prev };
-    prev = t;
-    return entry;
-  });
-
   return (
     <div className="space-y-4">
       {/* Town search box, above the map. */}
@@ -467,18 +457,14 @@ export function HomeMap({
       {/* Posting rail (filtered). */}
       <section className="pt-2">
         <h2 className="mb-3 text-lg font-bold text-ink">On your doorstep</h2>
-        {withTilt.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="cork-band rounded-edge p-6">
             <p className="text-paper">
               {activeCategory ? "Nothing in this category nearby yet." : "Nothing posted nearby yet. Be the first — scan a flyer."}
             </p>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {withTilt.map(({ posting, prevTilt }) => (
-              <PostingCard key={posting.id} posting={posting} tiltId={posting.id} prevTilt={prevTilt} />
-            ))}
-          </div>
+          <PostingCardGrid postings={filtered} />
         )}
       </section>
     </div>

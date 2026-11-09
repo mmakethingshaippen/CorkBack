@@ -35,9 +35,9 @@ export function PostingCard({
         ) : null}
       </div>
       <Link href={`/p/${posting.id}`} className="block">
-        <h3 className="text-lg font-bold leading-tight text-ink">{posting.title}</h3>
+        <h3 className="break-words text-lg font-bold leading-tight text-ink">{posting.title}</h3>
       </Link>
-      <p className="mt-1 text-sm text-ink/70">
+      <p className="mt-1 break-words text-sm text-ink/70">
         {dateLabel ? `${dateLabel} · ` : ""}
         {posting.placeLabel}
       </p>
