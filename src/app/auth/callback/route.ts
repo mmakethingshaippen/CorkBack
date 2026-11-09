@@ -7,7 +7,8 @@ import {
   hasRecoveryAmr,
   isRecentRecovery,
 } from "@/lib/authRecovery";
-import { RESET_PASSWORD_PATH, safeNextPath } from "@/lib/appUrl";
+import { RESET_PASSWORD_PATH } from "@/lib/appUrl";
+import { destinationAfterSignIn } from "@/lib/welcome";
 
 /**
  * PKCE code exchange on the server. Uses the public anon client with the
@@ -53,5 +54,5 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.redirect(new URL(RESET_PASSWORD_PATH, request.url));
   }
-  return NextResponse.redirect(new URL(safeNextPath(next, "/"), request.url));
+  return NextResponse.redirect(new URL(await destinationAfterSignIn(supabase, data.session.user.id, next), request.url));
 }

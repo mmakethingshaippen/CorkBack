@@ -32,8 +32,14 @@ export function AuthControl({ username }: { username: string | null }) {
 
   return (
     <div className="flex items-center gap-2">
+      {username === "" ? (
+        // Signed in but no profile yet: finish setup.
+        <Link href="/welcome" className="text-sm font-bold text-dark-red underline underline-offset-2">
+          Choose username
+        </Link>
+      ) : null}
       <Link
-        href={username ? `/u/${username}` : "/"}
+        href={username ? `/u/${username}` : "/welcome"}
         aria-label={username ? `@${username}` : "Your profile"}
         className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-deep-navy bg-white text-deep-navy"
       >
