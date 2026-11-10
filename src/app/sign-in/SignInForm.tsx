@@ -12,16 +12,20 @@ export function SignInForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setStatus("Signing in…");
-    const res = await fetch("/api/auth/sign-in", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const body = await res.json();
-    if (res.ok) {
-      window.location.href = "/";
-    } else {
-      setStatus(body.error ?? "Sign-in failed.");
+    try {
+      const res = await fetch("/api/auth/sign-in", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; needsUsername?: boolean };
+      if (res.ok) {
+        window.location.href = body.needsUsername ? "/welcome" : "/";
+      } else {
+        setStatus(body.error ?? "Sign-in failed.");
+      }
+    } catch {
+      setStatus("Couldn't reach CorkBack. Check your connection and try again.");
     }
   }
 

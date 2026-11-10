@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import maplibregl from "maplibre-gl";
+import { maplibre, maplibregl } from "./maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Posting } from "@/lib/types";
 
@@ -37,7 +37,7 @@ export function MapView({ postings }: { postings: Posting[] }) {
     if (!containerRef.current) return;
 
     const first = postings[0];
-    const map = new maplibregl.Map({
+    const map = new (maplibre().Map)({
       container: containerRef.current,
       style: STYLE,
       center: first ? [first.lng, first.lat] : [-0.1035, 51.5465],

@@ -4,7 +4,6 @@ import {
   isValidUsername,
   USERNAME_RE,
   computeExpiresAt,
-  effectiveTakedown,
   clampPinNudge,
   haversineMeters,
   MAX_NUDGE_METERS,
@@ -14,6 +13,7 @@ import {
   EXPIRY_PRESETS,
   type ExpiryPreset,
 } from "./domain";
+import { postingTakedown } from "./lifecycle";
 
 // ---------------------------------------------------------------------------
 // Property 1 (LOCKED): username rule. A username is valid IFF it is 3-20
@@ -75,7 +75,12 @@ describe("expiry rule (property)", () => {
         fc.date({ min: new Date("2020-01-01"), max: new Date("2031-01-01") }),
         (createdAt, preset, eventDate) => {
           const exp = computeExpiresAt(createdAt, preset);
-          const takedown = effectiveTakedown(exp, eventDate);
+          const takedown = postingTakedown({
+            expiresAt: exp.toISOString(),
+            eventDate: eventDate.toISOString().slice(0, 10),
+            lat: 37.87,
+            lng: -122.27,
+          });
           return takedown.getTime() <= exp.getTime();
         },
       ),

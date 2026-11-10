@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { EXPIRY_PRESETS, clampPinNudge, computeExpiresAt, type ExpiryPreset } from "./domain";
+import { FALLBACK_TIME_ZONE, eventEnd, isClockTime, isIsoDate, localDate, timeZoneForPin } from "./lifecycle";
 
 export interface ValidatedPosting {
   title: string;
@@ -8,6 +9,11 @@ export interface ValidatedPosting {
   rsvpUrl: string | null;
   eventDate: string | null;
   eventTime: string | null;
+  endDate: string | null;
+  /** "HH:MM", local to the posting's time zone. */
+  endTime: string | null;
+  /** IANA zone from the pin; null if lookup failed (lifecycle falls back to UTC−12). */
+  timeZone: string | null;
   placeLabel: string;
   expiry: ExpiryPreset;
   expiresAt: Date;
@@ -74,14 +80,57 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
 
   let eventDate: string | null = null;
   if (r.eventDate != null && r.eventDate !== "") {
-    if (typeof r.eventDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(r.eventDate) || Number.isNaN(Date.parse(r.eventDate))) {
+    if (!isIsoDate(r.eventDate)) {
       return { ok: false, error: "Event date must be YYYY-MM-DD." };
     }
     eventDate = r.eventDate;
   }
 
+  // A scanned date whose year was not printed must be confirmed by the poster.
+  if (eventDate && r.dateNeedsConfirmation === true && r.dateConfirmed !== true) {
+    return {
+      ok: false,
+      error: "The flyer did not show a year. Check the full event date, including the year, and confirm it.",
+    };
+  }
+
+  let endDate: string | null = null;
+  if (r.endDate != null && r.endDate !== "") {
+    if (!isIsoDate(r.endDate)) return { ok: false, error: "End date must be YYYY-MM-DD." };
+    endDate = r.endDate;
+  }
+  let endTime: string | null = null;
+  if (r.endTime != null && r.endTime !== "") {
+    if (!isClockTime(r.endTime)) return { ok: false, error: "End time must be HH:MM (24-hour)." };
+    endTime = r.endTime.slice(0, 5);
+  }
+  if ((endDate || endTime) && !eventDate) {
+    return { ok: false, error: "Add the event date before an end date or time." };
+  }
+  if (endDate && eventDate && endDate < eventDate) {
+    return { ok: false, error: "The end date is before the event date." };
+  }
+
   const real = r.real as { lat: number; lng: number };
   const desired = (r.desired as { lat: number; lng: number } | null | undefined) ?? real;
+  const pin = clampPinNudge(real, desired);
+  const timeZone = timeZoneForPin(pin.lat, pin.lng);
+  const expiresAt = computeExpiresAt(now, expiry);
+
+  // Reject past events, judged in the posting's own time zone.
+  if (eventDate) {
+    const today = localDate(now, timeZone ?? FALLBACK_TIME_ZONE);
+    if (eventDate < today && !(endDate && endDate >= today)) {
+      return {
+        ok: false,
+        error: "This event date has already passed. Check the date, including the year.",
+      };
+    }
+    const end = eventEnd({ expiresAt: expiresAt.toISOString(), eventDate, endDate, endTime, timeZone, ...pin });
+    if (end && end.getTime() <= now.getTime()) {
+      return { ok: false, error: "This event has already ended. Check the end date and time." };
+    }
+  }
 
   return {
     ok: true,
@@ -92,10 +141,13 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
       rsvpUrl,
       eventDate,
       eventTime: typeof r.eventTime === "string" && r.eventTime ? r.eventTime : null,
+      endDate,
+      endTime,
+      timeZone,
       placeLabel: typeof r.placeLabel === "string" ? r.placeLabel : "",
       expiry,
-      expiresAt: computeExpiresAt(now, expiry),
-      pin: clampPinNudge(real, desired),
+      expiresAt,
+      pin,
     },
   };
 }

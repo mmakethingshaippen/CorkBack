@@ -17,9 +17,11 @@ export async function POST(req: Request) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 401 });
   }
-  return NextResponse.json({ ok: true });
+  // An account without a profile finishes setup on /welcome (choose a username).
+  const { data: profile } = await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
+  return NextResponse.json({ ok: true, needsUsername: !profile });
 }

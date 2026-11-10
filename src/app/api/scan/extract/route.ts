@@ -37,7 +37,9 @@ markdown, no code fences, and no "key: value" lines. Use exactly these keys:
   placeLabel (venue/board text from the flyer, or ""),
   categorySlug (one of: ${slugs}),
   rsvpUrl (a single URL if present, else null),
-  body (a short 1-3 sentence description).
+  body (a short 1-3 sentence description),
+  eventDateYearPrinted (true ONLY if the year is printed on the flyer; false if
+    you had to assume the year; omit when eventDate is null).
 Do not invent a location pin — placeLabel is only the text on the flyer.`;
 
 /** Extract a numeric HTTP status from the SDK error, if present. */
@@ -297,6 +299,10 @@ export async function POST(req: Request) {
     categorySlug: known ? parsed.categorySlug : "community",
     rsvpUrl: parsed.rsvpUrl ?? null,
     body: parsed.body ?? "",
+    // Only an explicit `true` counts as "year printed". Anything else leaves the
+    // flag off, and the review form asks the poster to confirm the full date.
+    ...(parsed.eventDate && parsed.eventDateYearPrinted === true ? { eventDateYearPrinted: true } : {}),
+    ...(parsed.eventDate && parsed.eventDateYearPrinted === false ? { eventDateYearPrinted: false } : {}),
   };
   return NextResponse.json({ extracted });
 }

@@ -1,4 +1,4 @@
-import { cardTilt } from "@/lib/domain";
+import { cardTilt, tiltClearance } from "@/lib/domain";
 
 /**
  * Card surface: white, Board border, 13px corners. Choice B: uneven tilt
@@ -20,14 +20,16 @@ export function Card({
   className?: string;
 }) {
   const tilt = tiltId === null ? 0 : cardTilt(tiltId, prevTilt);
-  // A rotated card's corners extend past its layout box. Without clearance the
-  // rotated top edge can overlap the element above it (e.g. the map), reading
-  // as an empty white wedge. `my-3` gives tilted cards room so corners never
-  // collide with neighbours.
+  // A rotated card's corners rise above and drop below its layout box by
+  // (width / 2) x sin|tilt| - up to ~87 px for a full-width desktop card at 8deg,
+  // which overlapped neighbouring cards and headings. The vertical margin
+  // matches that lift exactly at any width: a percentage margin resolves against
+  // the card's own grid-area width. `min-w-0` lets long words wrap instead of
+  // widening the column (and the page) on mobile.
   return (
     <div
-      className={`rounded-card border border-board bg-card p-4 shadow-sm ${tilt ? "my-3" : ""} ${className}`}
-      style={tilt ? { transform: `rotate(${tilt}deg)` } : undefined}
+      className={`min-w-0 rounded-card border border-board bg-card p-4 shadow-sm ${className}`}
+      style={tilt ? { transform: `rotate(${tilt}deg)`, marginBlock: tiltClearance(tilt) } : undefined}
     >
       {children}
     </div>

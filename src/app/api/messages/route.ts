@@ -1,108 +1,104 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { orderedPair, validateMessageBody } from "@/lib/messaging";
+import { isUuid, orderedPair, validateMessageBody } from "@/lib/messaging";
+import { isValidUsername } from "@/lib/domain";
+import { sendErrorResponse, sendMessageOnce } from "@/lib/messagesServer";
 
 /**
- * Stage 3 messaging API — signed-in participants only.
+ * Private messaging API. Signed-in participants only; RLS is the enforcement
+ * (supabase/stage3_messaging.sql + stage6_social_part4.sql).
  *
- * POST  { postingId?, toUserId, body }  → find-or-create the 1:1 thread with
- *                                         toUserId and send a message. Returns
- *                                         { threadId }.
- * GET   ?threadId=...                    → messages in a thread the caller
- *                                         participates in (RLS-enforced).
- *
- * RLS (stage3_messaging.sql) is the real guard; these checks are defense in
- * depth and give readable errors. A third user cannot read or post.
+ * POST { postingId, toUsername, body, clientId }
+ *   Start (or reuse) the ONE conversation with the posting's author about that
+ *   posting, and send a message. `clientId` (uuid) makes retries idempotent.
+ *   Returns { threadId, message, duplicate }.
+ * GET  ?threadId=  Messages in a thread the caller participates in, oldest
+ *   first. 404 if the thread does not exist or the caller is not a participant.
  */
 
-function notConfigured() {
-  return NextResponse.json({ error: "Messaging is not configured in this environment." }, { status: 501 });
-}
+const fail = (status: number, code: string, error: string) => NextResponse.json({ error, code }, { status });
 
 export async function POST(req: Request) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return notConfigured();
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return fail(501, "not_configured", "Messaging is not configured in this environment.");
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Sign in to send a message." }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return fail(401, "signed_out", "Your session has ended. Sign in again to send; your draft is kept.");
 
-  const b = await req.json();
-
-  // Resolve the recipient by username (public name) so user ids stay off the
-  // public posting page. `toUserId` is also accepted for internal callers.
-  let toUserId: string | null = typeof b.toUserId === "string" && b.toUserId ? b.toUserId : null;
-  if (!toUserId && typeof b.toUsername === "string" && b.toUsername) {
-    const { data: prof } = await supabase.from("profiles").select("id").eq("username", b.toUsername).maybeSingle();
-    toUserId = prof?.id ?? null;
-    if (!toUserId) return NextResponse.json({ error: "Recipient not found." }, { status: 404 });
-  }
-  if (!toUserId) {
-    return NextResponse.json({ error: "A recipient is required." }, { status: 400 });
-  }
-  if (toUserId === user.id) {
-    return NextResponse.json({ error: "You cannot message yourself." }, { status: 400 });
+  let b: Record<string, unknown>;
+  try {
+    b = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return fail(400, "invalid", "Invalid request.");
   }
   const bodyCheck = validateMessageBody(b.body);
-  if (!bodyCheck.ok) return NextResponse.json({ error: bodyCheck.error }, { status: 400 });
+  if (!bodyCheck.ok) return fail(400, "invalid_body", bodyCheck.error);
+  if (!isUuid(b.clientId)) return fail(400, "invalid", "Missing send id. Refresh the page and try again.");
+  if (!isUuid(b.postingId)) return fail(400, "invalid", "Messages start from a posting.");
+  if (typeof b.toUsername !== "string" || !isValidUsername(b.toUsername)) return fail(404, "not_found", "That poster was not found.");
 
-  const postingId = typeof b.postingId === "string" && b.postingId ? b.postingId : null;
-  const { userLo, userHi } = orderedPair(user.id, toUserId);
+  // The conversation's context: the posting and its author.
+  const { data: posting } = await supabase
+    .from("postings")
+    .select("id, author_id, profiles!postings_author_id_fkey(username)")
+    .eq("id", b.postingId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  const authorName = (posting as { profiles?: { username?: string } | null } | null)?.profiles?.username;
+  if (!posting || authorName !== b.toUsername) return fail(404, "not_found", "That posting or poster was not found.");
+  const authorId = String(posting.author_id);
+  if (authorId === user.id) return fail(400, "self", "You can't message yourself about your own posting.");
 
-  // Find an existing thread for this pair + posting context, else create one.
-  let findQuery = supabase
-    .from("message_threads")
-    .select("id")
-    .eq("user_lo", userLo)
-    .eq("user_hi", userHi);
-  findQuery = postingId === null ? findQuery.is("posting_id", null) : findQuery.eq("posting_id", postingId);
-  const existing = await findQuery.maybeSingle();
+  const { userLo, userHi } = orderedPair(user.id, authorId);
+  const findThread = () =>
+    supabase.from("message_threads").select("id").eq("posting_id", posting.id).eq("user_lo", userLo).eq("user_hi", userHi).maybeSingle();
 
-  let threadId: string | null = existing.data?.id ?? null;
+  let threadId: string | null = (await findThread()).data?.id ?? null;
   if (!threadId) {
-    const { data: created, error: cErr } = await supabase
+    const { data: created, error } = await supabase
       .from("message_threads")
-      .insert({ posting_id: postingId, user_lo: userLo, user_hi: userHi })
+      .insert({ posting_id: posting.id, user_lo: userLo, user_hi: userHi })
       .select("id")
       .single();
-    if (cErr) {
-      // Likely a unique-constraint race: another request created it. Re-fetch.
-      let retryQuery = supabase
-        .from("message_threads")
-        .select("id")
-        .eq("user_lo", userLo)
-        .eq("user_hi", userHi);
-      retryQuery = postingId === null ? retryQuery.is("posting_id", null) : retryQuery.eq("posting_id", postingId);
-      const retry = await retryQuery.maybeSingle();
-      if (!retry.data?.id) return NextResponse.json({ error: cErr.message }, { status: 400 });
-      threadId = retry.data.id;
-    } else {
-      threadId = created.id;
+    if (created) threadId = created.id;
+    else if (error?.code === "23505") threadId = (await findThread()).data?.id ?? null; // a concurrent send created it
+    if (!threadId) {
+      console.error("[CorkBack] thread create failed:", { code: error?.code, message: error?.message });
+      return fail(error?.code === "42501" ? 403 : 500, "thread_failed", "Couldn't start the conversation. Your draft is kept, so you can try again.");
     }
   }
 
-  const { error: mErr } = await supabase
-    .from("messages")
-    .insert({ thread_id: threadId, sender_id: user.id, body: bodyCheck.value });
-  if (mErr) return NextResponse.json({ error: mErr.message }, { status: 400 });
-
-  return NextResponse.json({ threadId });
+  const sent = await sendMessageOnce(supabase, threadId, user.id, bodyCheck.value, b.clientId);
+  if (!sent.ok) {
+    console.error("[CorkBack] message send failed:", { code: sent.code, message: sent.message });
+    const r = sendErrorResponse(sent.code);
+    return fail(r.status, r.code, r.error);
+  }
+  return NextResponse.json({ threadId, message: sent.message, duplicate: sent.duplicate });
 }
 
 export async function GET(req: Request) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return notConfigured();
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return fail(501, "not_configured", "Messaging is not configured in this environment.");
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Sign in to read messages." }, { status: 401 });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return fail(401, "signed_out", "Your session has ended. Sign in again to read messages.");
 
-  const { searchParams } = new URL(req.url);
-  const threadId = searchParams.get("threadId");
-  if (!threadId) return NextResponse.json({ error: "Missing threadId." }, { status: 400 });
+  const threadId = new URL(req.url).searchParams.get("threadId");
+  if (!isUuid(threadId)) return fail(404, "not_found", "Conversation not found.");
 
-  // RLS returns rows only if the caller is a participant; a third user gets [].
+  // RLS returns the thread only to a participant.
+  const { data: thread } = await supabase.from("message_threads").select("id").eq("id", threadId).maybeSingle();
+  if (!thread) return fail(404, "not_found", "Conversation not found.");
+
   const { data, error } = await supabase
     .from("messages")
     .select("id, sender_id, body, created_at")
     .eq("thread_id", threadId)
-    .order("created_at", { ascending: true });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) return fail(500, "load_failed", "Couldn't load messages. Try again.");
   return NextResponse.json({ messages: data ?? [] });
 }

@@ -42,25 +42,8 @@ export function computeExpiresAt(createdAt: Date, preset: ExpiryPreset): Date {
   return new Date(createdAt.getTime() + PRESET_MS[preset]);
 }
 
-/**
- * Effective takedown for a posting. If it is an event with an event date, it
- * also comes down after the event day ends, even if the preset has not elapsed.
- * Returns the EARLIER of preset expiry and end-of-event-day.
- */
-export function effectiveTakedown(
-  expiresAt: Date,
-  eventDate: Date | null,
-): Date {
-  if (!eventDate) return expiresAt;
-  const endOfEventDay = new Date(eventDate);
-  endOfEventDay.setHours(23, 59, 59, 999);
-  return endOfEventDay.getTime() < expiresAt.getTime() ? endOfEventDay : expiresAt;
-}
-
-export function isActive(now: Date, expiresAt: Date, eventDate: Date | null, deletedAt: Date | null): boolean {
-  if (deletedAt) return false;
-  return now.getTime() < effectiveTakedown(expiresAt, eventDate).getTime();
-}
+// When a posting ends (expiry vs. event end, in the posting's time zone) lives
+// in ./lifecycle.ts: `postingTakedown` / `isPostingActive`.
 
 // ---------------------------------------------------------------------------
 // Pin nudge (LOCKED): a posting pins near the poster's real location. A short
@@ -184,4 +167,14 @@ export function cardTilt(id: string, prevTilt: number | null): number {
     }
   }
   return tilt;
+}
+
+/**
+ * Vertical margin that clears a tilted card's corner lift, (width / 2) x
+ * sin|tilt|, written as a percentage of the card's own width (a percentage
+ * margin on a grid item resolves against its grid-area width) plus a small gap.
+ */
+export function tiltClearance(tiltDeg: number): string {
+  const pct = (Math.sin((Math.abs(tiltDeg) * Math.PI) / 180) / 2) * 100;
+  return `calc(${pct.toFixed(3)}% + 6px)`;
 }

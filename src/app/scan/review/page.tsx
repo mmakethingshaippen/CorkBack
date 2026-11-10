@@ -9,7 +9,7 @@ export default async function ReviewPage() {
 
   return (
     <main className="min-h-screen pb-24">
-      <TopBar back={{ href: "/scan", label: "Review your scan" }} />
+      <TopBar back={{ href: "/scan", label: "Back to scan" }} />
       <div className="px-4">
         <h1 className="text-2xl font-bold text-ink">Make the details clear.</h1>
         <p className="mt-1 text-ink/70">Check and edit every field before it goes public. Fields from a scan are filled in; for a manual posting, enter them here.</p>

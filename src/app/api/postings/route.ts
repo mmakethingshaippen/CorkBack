@@ -43,6 +43,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid category." }, { status: 400 });
   }
 
+  // Store the zone only if the database accepts it too, so the app and the
+  // database always evaluate the same zone (otherwise both use the fallback).
+  let timeZone = p.timeZone;
+  if (timeZone) {
+    const { data: dbZone, error: tzErr } = await supabase.rpc("cb_safe_time_zone", { p_tz: timeZone });
+    if (tzErr || dbZone !== timeZone) timeZone = null;
+  }
+
   const { data, error } = await supabase
     .from("postings")
     .insert({
@@ -53,6 +61,9 @@ export async function POST(req: Request) {
       rsvp_url: p.rsvpUrl,
       event_date: p.eventDate,
       event_time: p.eventTime,
+      end_date: p.endDate,
+      end_time: p.endTime,
+      time_zone: timeZone,
       place_label: p.placeLabel,
       lat: p.pin.lat,
       lng: p.pin.lng,

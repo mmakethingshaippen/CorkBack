@@ -119,3 +119,18 @@ The final writeup is built from this log, not from memory.
 - **Kiro IDE** — Diagnosed by measurement rather than assumption: followed recovery links one hop and read where Supabase actually redirected, captured the real `redirect_to` the deployed form sends, and checked the session auth-method values. Built server auth callbacks, a homepage Site URL fallback, a recovery-gated reset page, and https normalization. Deployed from a clean git worktree so another session's uncommitted work never shipped.
 - **Real-browser testing** — Drove the deployed site in the installed Microsoft Edge via playwright-core (installed in a temp folder, not the project), including one complete real-email password reset. Tool removed afterwards.
 - **Supabase Auth** — resetPasswordForEmail, exchangeCodeForSession, verifyOtp, setSession, updateUser, all through the public anon client.
+
+## Nov 8: social features spec (2026-11-08)
+
+- **Specs (spec-driven)**: Wrote `.kiro/specs/social` (requirements → design → tasks) before any code, covering 8 observed live issues and 4 feature stages. The plan was held for approval.
+- **Kiro IDE**: Traced each reported bug to code and data before proposing fixes: client-only like/plan state, a 0-row live table count, a missing expiry check on direct posting URLs, and RLS gaps on `connections`. The checks were read-only, and the probe script was removed afterwards.
+- **Steering**: Checked the plan against `follow-connect-independence.md`, `location-rules.md`, and `account-model.md`. Follow and friendship stay independent; there are no likes on replies, and no emails or locations are exposed.
+
+## Nov 8: Stage 1 verification and Stage 2 Following (2026-11-08)
+
+- **Specs (spec-driven):** worked through `.kiro/specs/social/tasks.md` one stage at a time with approval gates. Each stage records what was implemented, what was verified, and what remains.
+- **Kiro IDE:**
+  - Before deploying the cron hotfix, proved what production ran by comparing the deployed source file hashes with the git commit.
+  - Diagnosed a rapid-click test failure by logging requests rather than changing app code (Playwright queues clicks).
+  - Caught a tilted-card overlap from a screenshot, then added a geometry assertion so it can't regress unnoticed.
+- **Real-browser testing:** two separate Edge sessions with disposable accounts, plus PostgREST permission tests using real user JWTs. Temp tools lived outside the repo and were removed afterwards.

@@ -318,3 +318,108 @@ Spec: `.kiro/specs/password-reset/` (requirements, design, tasks). Theme, colors
 - Cleanup: 0 residual test users; all accounts have profiles; real accounts untouched. One unrelated yopmail account created 2026-11-06 02:59 UTC was not created by these tests and was left alone.
 
 **Needs Max:** set the Vercel `NEXT_PUBLIC_APP_URL` to `https://corkback.vercel.app` and redeploy; confirm the Supabase Site URL and Redirect URLs; optionally switch to the token_hash template; run one real reset email on the live site.
+
+## Nov 8: social features, planning only (2026-11-08)
+
+Spec: `.kiro/specs/social/` (requirements, design, tasks). No code changed yet; waiting for Max's approval before Stage 1.
+
+**Findings from inspection (code, schema/RLS, read-only live DB probe):**
+- Like and Going/Interested lose their state on refresh because `src/components/ui/PostingActions.tsx` keeps them in React state only. Nothing in `src` writes to `likes`, `plans`, `follows`, or `connections`, and the live tables have 0 rows each.
+- The ended posting (ffe92f35) still offers Going because its `event_date` is 2024-11-16 and `getPosting` filters only `deleted_at`, not expiry. `effectiveTakedown` also uses the server timezone (UTC). Publishing accepts past event dates.
+- RLS gaps: `connections` has no DELETE policy, and its UPDATE policy lets the requester accept their own request. `likes` and `plans` are publicly readable.
+- Following and Friends are placeholder pages. The Scan back-link reads "Scan a flyer" but goes to `/`.
+- Message composer: the code navigates to the thread on success. The reported "no confirmation" bug is not reproduced yet; that's scheduled for Stage 4.
+
+**Plan:** 4 stages (likes/plans/expiry → follow → friends → messaging). One additive migration `supabase/stage6_social.sql`, which Max applies part by part in the Supabase SQL editor.
+
+## Nov 8: Stage 1 migration review package (2026-11-08)
+
+Nothing applied or deployed yet. These files are waiting for Max's review.
+- **Migration:** `supabase/stage6_social_part1.sql`.
+- **Pre/post checks:** `_preflight`, `_verify_admin` (catalog and functions only), `_verify_roles` (anon/authenticated, using three disposable accounts the script creates and removes).
+- **Rollback:** `_rollback`, labeled as restoring the old public reads.
+- **Connections lock:** part 1 now closes connections writes until part 3. The existing insert and update policies allowed self-accepted friendships and re-pointing a row at a third user.
+- **Time zones:** the app no longer looks up a zone from the pin at read time. The app and the database both use only the stored zone, falling back to UTC−12.
+- **Cron:** the deployed expiry cron soft-deleted posting ae1d5b7a at 2026-11-03 17:58 UTC. It will delete ffe92f35 on its next run, 2026-11-09 between 17:00 and 17:59 UTC on the Hobby plan.
+- **Hotfix:** prepared on branch `hotfix/cron-read-only`, based on deployed commit 4c1434f, with one file changed. It passes typecheck, 74 tests, and build. A local run returned 401/401/200 with `deleted: 0`, and ffe92f35 was unchanged afterwards. Not deployed.
+- **Main tree:** typecheck passes, 121/121 tests.
+
+## Nov 8: cron-only hotfix deployed to production (2026-11-08)
+
+Max approved deploying only the read-only expiry route.
+- **Pre-check:** production was `dpl_3ubwPnJcWNoH17bPstnw4gAtukVG`, with `gitCommitSha` 4c1434f. All of its deployed source files were byte-identical to 4c1434f. The only difference was the untracked build cache `tsconfig.tsbuildinfo`. Nothing newer existed to preserve.
+- **Commit:** `e1b99f45b31139cc7844764030d1ea48d422beca` on `hotfix/cron-read-only`, based on 4c1434f. It changes `src/app/api/cron/expire/route.ts` (read-only count, no soft-delete) and adds `route.test.ts`.
+- **Deployment:** `dpl_3sds7ZQP5FdhEysgMt31ZJe9tp6N`, at https://cork-back-hy29ky8eo-max-082a.vercel.app, aliased to https://corkback.vercel.app. The API reports `gitCommitSha` e1b99f45. Its file tree differs from the previous deployment only in route.ts (hash matches the hotfix file), the added route.test.ts, and the dropped tsbuildinfo.
+- **Live checks:**
+  - No header: 401. Wrong secret: 401. Both visible in the request logs.
+  - `vercel crons run /api/cron/expire` at 22:12:07 UTC: user agent `vercel-cron/1.0`, HTTP 200.
+  - Posting rows before and after were identical; ffe92f35 still has `deleted_at = null`.
+- **Not included:** Stage 1 and d63b8d8. The main branch doesn't contain e1b99f45 yet. The main tree's uncommitted route.ts is identical, so Stage 1 includes the same change.
+
+## Nov 8: Stage 1 browser verification and preview (2026-11-08)
+
+- **Migration:** Max applied part 1. verify_admin passed 23/23 (plus 2 info rows) and verify_roles 27/27, with zero residue and totals matching the baseline.
+- **Preview:** https://cork-back-l4atti1nw-max-082a.vercel.app (`dpl_Fxb4ui2tP7hyFxmT9Bz5E5XrrQyt`, target preview).
+  - Built from a clean export of the working tree (tracked plus untracked, gitignored files excluded).
+  - Includes the cron hotfix byte for byte, and the deployed files match the tested export (136 of 136).
+  - Only `NEXT_PUBLIC_SUPABASE_URL` and the anon key were passed, for this deployment only. Project env vars and settings are unchanged, and no service-role key went to the preview.
+  - Deployment Protection is on for previews and no bypass secret exists, so the preview needs a Vercel login.
+- **Checks:** typecheck, lint, 121/121 tests, production build.
+- **Browser verification:** real Edge, two separate contexts, disposable accounts `cbsoc_a_571667` and `cbsoc_b_571667`, run against a local `next start` of the same source and the live database.
+  - Main suite: 40/40 checks.
+  - Covered: publish (past date rejected, zone stored), year-less confirmation (UI and server), accessible names, like and plan persistence across refresh and sign-out/sign-in, switch/clear, cross-session totals, network, 500 and expired-session failure with rollback, ended posting (no controls, 409, no writes, off the map and profile, messaging kept), 390 and 1280 layouts, Scan back link, and @testing read-only on ffe92f35 (zero like/plan requests).
+  - Rapid clicks: the first rapid-click check failed because Playwright queues clicks, and the diagnosis showed the app was behaving correctly. A replacement test dispatching the clicks synchronously passed 4/4: each burst sent one request and produced at most one row.
+- **Finding:** the `on_auth_user_created` trigger is not active in the database (the profiles weren't created automatically). The sign-up route creates profiles itself, so the app works. The test setup did the same.
+- **Cleanup:** 3 [TEST] postings and 2 users deleted. Residue is zero in every table. Totals: postings 2, profiles 5, likes/plans/connections/follows 0. ffe92f35 is unchanged.
+
+## Nov 8: Stage 2, Following (2026-11-08)
+
+- **Git:** created `feature/social` from main d63b8d8 and merged `hotfix/cron-read-only` with `--no-ff` (merge 4e0f563), so deployed commit e1b99f45 is preserved in the branch history. main and origin/main are unchanged; nothing was pushed. Stage 1 and Stage 2 work is still uncommitted on the branch. The hotfix branch and worktree are kept.
+- **Database:** no change. The existing follows rules already prevent duplicates (PK) and self-follows (CHECK), and RLS only lets a user add or remove their own edges, with no UPDATE policy. `supabase/stage6_social_part2_check.sql` is a read-only confirmation and includes the profile-trigger state.
+- **Code:**
+  - `PUT /api/follows/[username]`, idempotent desired state.
+  - `FollowButton` on profiles and the posting author section, replacing the placeholder copy.
+  - `/following` with signed-out, error, empty, nothing-active and feed states, a loading state, and a "You follow" list.
+  - Pure `followState` helpers with property tests.
+  - `PostingCardGrid`: a 1280 px screenshot showed a full-width tilted card covering the cork band and a heading; responsive columns fixed it, and a geometry check now asserts 0 overlaps at 390 and 1280 px.
+- **Checks:** typecheck, lint, 126/126 unit tests, production build. REST permissions with real JWTs: 16/16. Two-session Edge suite: 40/40. Covered:
+  - persistence across refresh and sign-out/sign-in
+  - feed content and the empty, nothing-active and loading states
+  - self-follow and API validation
+  - rapid clicks (1 request) and failure rollbacks
+  - one-way follows, with no connection rows created
+- **Preview:** https://cork-back-kpbs8gt2g-max-082a.vercel.app (`dpl_8SJHk17KK4ngCWjHCCbgXKJipCjk`). It is byte-identical to the tested source (143/143) and protected; it was not browser-tested directly.
+- **Cleanup:** 3 [TEST] postings and 3 accounts deleted. Residue is zero, totals match baseline, and ffe92f35 is unchanged. An empty `%TEMP%\cb_s2` folder tree remains, locked by Windows; it has no files.
+- **Profile trigger (recorded accurately):** auth users created via the admin API received no profile row, so the `on_auth_user_created` trigger is absent or not firing in this database. That's an observation, not a catalog confirmation; F5 in the part 2 check confirms it. The sign-up route creates profiles itself. Release gate: verify a normal sign-up creates exactly one usable profile, and don't apply `stage5_profile_trigger.sql` blindly.
+
+## Nov 8: Stage 3, Friends (2026-11-08)
+
+- **Git:** on `feature/social`, Stage 1 (f4cade7), Stage 2 (3f367db) and docs (b6174f9) were committed separately. The Stage 1 commit was built from Stage 1 versions of two mixed files and checked on its own: typecheck, lint, 121 tests, build. The cron hotfix merge 4e0f563 is preserved. Nothing pushed; main untouched.
+- **Database:** Max applied part 3; its admin and role checks passed. What it enforces:
+  - one row per pair of users in either direction
+  - no self-requests
+  - participants can't be changed (column grants)
+  - only the recipient accepts
+  - either participant can delete
+  - friends see plans only on active postings; likes stay owner-only
+- **Code:**
+  - `POST /api/connections` (send/cancel/accept/decline/remove; idempotent; 409 incoming_exists/already_friends/state_changed).
+  - `GET /api/users/search` (signed-in, prefix, `_` escaped, usernames only).
+  - `/friends`: search, three lists, friends' plans, loading/empty/error/signed-out states.
+  - `ConnectButton` on profiles, separate from Follow.
+- **Checks:**
+  - typecheck, lint, 132/132 unit tests, production build
+  - REST with real JWTs: 21/21. Simultaneous A→B/B→A inserts always left exactly one pending row (10/10 rounds), and the requester and outsiders can't accept, change participants, read or delete.
+  - Three-session Edge suite: 51/51.
+- **Edge suite coverage:**
+  - search validation, self excluded, literal underscore
+  - send, cancel, decline and accept, persisting across refresh and sign-out/in
+  - stale accept after cancel; simultaneous clicks from two sessions (3 rounds: one pending row, both UIs agree)
+  - friends' plans on active postings only; likes stay private
+  - follow independent both ways
+  - unrelated C sees nothing
+  - removal revoking on the next load, including a stale tab
+  - rapid clicks (1 request); network, 500 and expired-session failures
+  - signed-out states; 390/1280 layouts; loading state
+- **Bug found and fixed:** on an expired session, the action hook refreshed into the signed-out view and the "sign in again" message disappeared. It now keeps the message and doesn't refresh on 401.
+- **Cleanup:** disposable accounts and [TEST] postings deleted; zero residue; totals at baseline; ffe92f35 unchanged.
