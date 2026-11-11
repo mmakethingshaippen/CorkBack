@@ -3,7 +3,7 @@ import { TopBar } from "@/components/ui/TopBar";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { PosterHandle } from "@/components/ui/PosterHandle";
 import { PostingCardGrid } from "@/components/ui/PostingCardGrid";
-import { getProfileByUsername, listPostingsByUsername } from "@/lib/postings";
+import { attachViewerLikes, getProfileByUsername, listPostingsByUsername } from "@/lib/postings";
 import { getViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isFollowing } from "@/lib/follows";
@@ -27,7 +27,8 @@ export default async function ProfilePage({
   const profile = await getProfileByUsername(username);
   if (!profile) notFound();
 
-  const [postings, viewer] = await Promise.all([listPostingsByUsername(profile.username), getViewer()]);
+  const [rawPostings, viewer] = await Promise.all([listPostingsByUsername(profile.username), getViewer()]);
+  const postings = await attachViewerLikes(rawPostings, viewer?.id ?? null);
   const isSelf = viewer?.id === profile.id;
   let following = false;
   let relationship: Relationship = "none";
@@ -64,7 +65,7 @@ export default async function ProfilePage({
           {postings.length === 0 ? (
             <p className="text-sm text-ink/60">No active postings from @{profile.username} right now.</p>
           ) : (
-            <PostingCardGrid postings={postings} />
+            <PostingCardGrid postings={postings} signedIn={viewer !== null} />
           )}
         </section>
       </div>

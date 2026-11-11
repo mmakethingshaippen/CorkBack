@@ -7,6 +7,7 @@ import { PosterHandle } from "@/components/ui/PosterHandle";
 import { SignInToTakePart } from "@/components/ui/SignInToTakePart";
 import { getViewer } from "@/lib/auth";
 import { getFollowingFeed } from "@/lib/follows";
+import { attachViewerLikes } from "@/lib/postings";
 import type { Posting } from "@/lib/types";
 
 /**
@@ -24,7 +25,8 @@ export default async function FollowingPage() {
   let loadError: string | null = null;
   if (viewer) {
     try {
-      feed = await getFollowingFeed(viewer.id);
+      const f = await getFollowingFeed(viewer.id);
+      feed = { ...f, postings: await attachViewerLikes(f.postings, viewer.id) };
     } catch (e) {
       loadError = e instanceof Error ? e.message : "Could not load your Following feed.";
     }
@@ -78,7 +80,7 @@ export default async function FollowingPage() {
             <h2 id="following-feed" className="sr-only">
               Postings from posters you follow
             </h2>
-            <PostingCardGrid postings={feed?.postings ?? []} />
+            <PostingCardGrid postings={feed?.postings ?? []} signedIn />
           </section>
         )}
 

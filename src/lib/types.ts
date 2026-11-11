@@ -27,6 +27,10 @@ export interface Posting {
   goingCount: number;
   interestedCount: number;
   createdAt: string;
+  /** Whether the CURRENT viewer liked it (their own saved like; never anyone else's). Absent when signed out. */
+  viewerLiked?: boolean;
+  /** Server time the viewer state and counts were read (ISO); see src/lib/likeStore.ts. */
+  viewerStateAt?: string;
 }
 
 export type PlanKind = "going" | "interested";

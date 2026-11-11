@@ -105,9 +105,11 @@ function circlePolygon(
 export function HomeMap({
   postings,
   homePoint,
+  signedIn = false,
 }: {
   postings: Posting[];
   homePoint: { lat: number; lng: number; townName: string | null } | null;
+  signedIn?: boolean;
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -464,7 +466,7 @@ export function HomeMap({
             </p>
           </div>
         ) : (
-          <PostingCardGrid postings={filtered} />
+          <PostingCardGrid postings={filtered} signedIn={signedIn} />
         )}
       </section>
     </div>

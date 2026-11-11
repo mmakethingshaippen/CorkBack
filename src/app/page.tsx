@@ -5,7 +5,7 @@ import { BottomNav } from "@/components/ui/BottomNav";
 import { MapView } from "@/components/map/MapView";
 import { HomeMap } from "@/components/map/HomeMap";
 import { redirect } from "next/navigation";
-import { listActivePostings } from "@/lib/postings";
+import { attachViewerLikes, listActivePostings } from "@/lib/postings";
 import { getViewer, getViewerHomePoint } from "@/lib/auth";
 import { AuthHashForwarder } from "@/components/auth/AuthHashForwarder";
 
@@ -42,7 +42,8 @@ export default async function Home({
   let postings: Awaited<ReturnType<typeof listActivePostings>> = [];
   let loadError: string | null = null;
   try {
-    postings = await listActivePostings();
+    // The viewer's own saved likes, for the card Like buttons.
+    postings = await attachViewerLikes(await listActivePostings(), viewer?.id ?? null);
   } catch (e) {
     loadError = e instanceof Error ? e.message : "Could not load postings.";
   }
@@ -95,7 +96,7 @@ export default async function Home({
             <p className="mt-1 text-sm text-ink/80">{loadError}</p>
           </div>
         ) : (
-          <HomeMap postings={postings} homePoint={homePoint} />
+          <HomeMap postings={postings} homePoint={homePoint} signedIn={viewer !== null} />
         )}
       </section>
 

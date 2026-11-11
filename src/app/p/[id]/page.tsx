@@ -35,6 +35,7 @@ export default async function PostingPage({
 
   // The viewer's own like/plan and friends' plans come from server reads (RLS
   // decides visibility), so the page shows saved state after refresh/sign-in.
+  const stateAt = new Date().toISOString(); // server read time, for card/detail like consistency
   let mine: { liked: boolean; plan: PlanKind | null } = { liked: false, plan: null };
   let friendPlans: { username: string; kind: PlanKind }[] = [];
   let followingAuthor = false;
@@ -144,6 +145,7 @@ export default async function PostingPage({
             counts: { likes: posting.likeCount, going: posting.goingCount, interested: posting.interestedCount },
           }}
           friendPlans={friendPlans}
+          stateAt={stateAt}
         />
 
         <div className="rounded-card border border-board bg-board/30 p-4">

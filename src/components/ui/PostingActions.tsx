@@ -6,7 +6,8 @@ import { HeartIcon } from "@/components/icons";
 import { SignInToTakePart } from "./SignInToTakePart";
 import { ShareButton } from "./ShareButton";
 import { PosterHandle } from "./PosterHandle";
-import { applyLike, applyPlan, countLabel, nextPlan } from "@/lib/reactionState";
+import { applyLike, applyPlan, countLabel, likeButtonLabel, likeErrorMessage, nextPlan } from "@/lib/reactionState";
+import { initialLike, setConfirmedLike } from "@/lib/likeStore";
 import type { PlanKind, ReactionCounts } from "@/lib/types";
 
 interface Snapshot {
@@ -31,16 +32,24 @@ export function PostingActions({
   ended,
   initial,
   friendPlans = [],
+  stateAt,
 }: {
   postingId: string;
   signedIn: boolean;
   ended: boolean;
   initial: Snapshot;
   friendPlans?: { username: string; kind: PlanKind }[];
+  /** Server time this state was read (ISO); see src/lib/likeStore.ts. */
+  stateAt?: string;
 }) {
   const router = useRouter();
-  const [saved, setSaved] = useState<Snapshot>(initial);
-  const [view, setView] = useState<Snapshot>(initial);
+  // A like confirmed in this tab (e.g. from a card) wins over an older cached render.
+  const [start] = useState<Snapshot>(() => {
+    const l = initialLike(postingId, { liked: initial.liked, likes: initial.counts.likes }, stateAt);
+    return { ...initial, liked: l.liked, counts: { ...initial.counts, likes: l.likes } };
+  });
+  const [saved, setSaved] = useState<Snapshot>(start);
+  const [view, setView] = useState<Snapshot>(start);
   const [pending, setPending] = useState<"like" | "plan" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [closed, setClosed] = useState(ended);
@@ -95,18 +104,14 @@ export function PostingActions({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = (await res.json().catch(() => ({}))) as Partial<Snapshot> & { error?: string; code?: string };
+      const data = (await res.json().catch(() => ({}))) as Partial<Snapshot> & { at?: string; error?: string; code?: string };
       if (!res.ok) {
         setView(saved); // roll back to the last saved state
         if (data.code === "ended") {
           setClosed(true);
           router.refresh();
         }
-        setMessage(
-          data.code === "signed_out"
-            ? "Your session has ended. Sign in again to save this."
-            : data.error ?? "Could not save. Try again.",
-        );
+        setMessage(likeErrorMessage(data.code, data.error));
         return;
       }
       const confirmed: Snapshot = {
@@ -116,6 +121,7 @@ export function PostingActions({
       };
       setSaved(confirmed);
       setView(confirmed);
+      if (kind === "like") setConfirmedLike(postingId, { liked: confirmed.liked, likes: confirmed.counts.likes }, data.at);
     } catch {
       setView(saved);
       setMessage("Could not reach CorkBack. Check your connection and try again.");
@@ -165,12 +171,12 @@ export function PostingActions({
           onClick={toggleLike}
           aria-pressed={view.liked}
           aria-disabled={busy}
-          aria-label={`Like this posting. ${likeText}`}
-          className={`inline-flex items-center gap-1 rounded-control border px-3 py-2 ${
+          aria-label={likeButtonLabel(view.liked, counts.likes)}
+          className={`inline-flex min-h-[44px] items-center gap-1 rounded-control border px-3 py-2 ${
             view.liked ? "border-dark-red text-dark-red" : "border-board text-ink"
           } ${busy ? "cursor-wait opacity-70" : ""}`}
         >
-          <HeartIcon /> <span>{view.liked ? "Liked" : "Like"}</span>
+          <HeartIcon aria-hidden="true" fill={view.liked ? "currentColor" : "none"} /> <span>{view.liked ? "Liked" : "Like"}</span>
           <span className="text-ink/70">· {counts.likes}</span>
         </button>
         <ShareButton variant="button" />

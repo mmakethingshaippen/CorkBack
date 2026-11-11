@@ -2,19 +2,25 @@ import Link from "next/link";
 import { Card } from "./Card";
 import { CategoryChip } from "./CategoryChip";
 import { PosterHandle } from "./PosterHandle";
-import { HeartIcon } from "@/components/icons";
+import { CardLike } from "./CardLike";
 import { categoryLabel } from "@/lib/categories";
 import type { Posting } from "@/lib/types";
 
-/** A posting summary card for the home rails. Tilt comes from Choice B via Card. */
+/**
+ * A posting summary card (home rail, Following, profiles). Tilt comes from
+ * Choice B via Card. The card itself is not a link: the title and the author
+ * handle are links, and the Like control is a separate button beside them.
+ */
 export function PostingCard({
   posting,
   tiltId,
   prevTilt = null,
+  signedIn = false,
 }: {
   posting: Posting;
   tiltId: string;
   prevTilt?: number | null;
+  signedIn?: boolean;
 }) {
   // event_date is a calendar date: format it without shifting time zones.
   const dateLabel = posting.eventDate
@@ -24,8 +30,6 @@ export function PostingCard({
         month: "short",
       })
     : null;
-  const likeText = `${posting.likeCount} ${posting.likeCount === 1 ? "like" : "likes"}`;
-
   return (
     <Card tiltId={tiltId} prevTilt={prevTilt}>
       <div className="mb-2 flex items-center justify-between">
@@ -41,11 +45,17 @@ export function PostingCard({
         {dateLabel ? `${dateLabel} · ` : ""}
         {posting.placeLabel}
       </p>
-      <div className="mt-3 flex items-center justify-between text-sm">
-        <PosterHandle username={posting.authorUsername} />
-        <span className="inline-flex items-center gap-1 text-ink/60" aria-label={likeText} role="img">
-          <HeartIcon /> {posting.likeCount}
+      <div className="mt-3 flex items-start justify-between gap-2 text-sm">
+        <span className="flex min-h-[44px] items-center">
+          <PosterHandle username={posting.authorUsername} />
         </span>
+        <CardLike
+          postingId={posting.id}
+          likes={posting.likeCount}
+          liked={posting.viewerLiked ?? false}
+          signedIn={signedIn}
+          stateAt={posting.viewerStateAt}
+        />
       </div>
     </Card>
   );

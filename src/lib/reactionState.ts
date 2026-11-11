@@ -46,6 +46,22 @@ export function countLabel(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/**
+ * Accessible name for a Like toggle (approved wording). It names the action the
+ * button performs and keeps the count; selection itself is `aria-pressed`.
+ */
+export function likeButtonLabel(liked: boolean, likes: number): string {
+  return `${liked ? "Unlike" : "Like"} this posting. ${countLabel(likes, "like", "likes")}`;
+}
+
+/** Readable text for a failed like save, from the like route's `code`. */
+export function likeErrorMessage(code: string | undefined, error: string | undefined): string {
+  if (code === "signed_out") return "Your session has ended. Sign in again to save this.";
+  if (code === "ended") return "This posting has ended. Likes are closed.";
+  if (code === "not_found") return "This posting is no longer available.";
+  return error ?? "Could not save. Try again.";
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function isUuid(s: unknown): s is string {
   return typeof s === "string" && UUID_RE.test(s);

@@ -71,5 +71,6 @@ export async function reactionSnapshot(supabase: SupabaseClient, postingId: stri
     getViewerReaction(supabase, postingId, userId),
     getReactionCounts(supabase, [postingId]),
   ]);
-  return NextResponse.json({ ...mine, counts: counts.get(postingId) ?? ZERO_COUNTS });
+  // `at`: server time of this snapshot, so clients can tell it apart from older cached renders.
+  return NextResponse.json({ ...mine, counts: counts.get(postingId) ?? ZERO_COUNTS, at: new Date().toISOString() });
 }

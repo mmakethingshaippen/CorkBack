@@ -40,6 +40,31 @@ export async function getReactionCounts(
   return out;
 }
 
+/**
+ * Which of these postings the viewer has liked. RLS returns only the viewer's
+ * own likes rows, so this can never reveal anyone else's. On error, returns an
+ * empty set: cards then show "not liked" and the like route corrects it.
+ */
+export async function getViewerLikedIds(
+  supabase: SupabaseClient,
+  userId: string,
+  ids: string[],
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (ids.length === 0) return out;
+  const { data, error } = await supabase
+    .from("likes")
+    .select("posting_id")
+    .eq("user_id", userId)
+    .in("posting_id", ids.slice(0, 500));
+  if (error) {
+    console.error("[CorkBack] viewer likes failed:", { code: error.code, message: error.message });
+    return out;
+  }
+  for (const r of data ?? []) out.add(String((r as { posting_id: string }).posting_id));
+  return out;
+}
+
 export async function getViewerReaction(
   supabase: SupabaseClient,
   postingId: string,

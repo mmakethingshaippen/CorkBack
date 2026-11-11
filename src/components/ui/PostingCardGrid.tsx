@@ -8,7 +8,7 @@ import type { Posting } from "@/lib/types";
  * card's width and tilt). Responsive columns keep cards about 400 px wide on
  * desktop, and the wider column gap clears the sideways swing of the corners.
  */
-export function PostingCardGrid({ postings }: { postings: Posting[] }) {
+export function PostingCardGrid({ postings, signedIn = false }: { postings: Posting[]; signedIn?: boolean }) {
   let prev: number | null = null;
   const cards = postings.map((p) => {
     const entry = { posting: p, prevTilt: prev };
@@ -18,7 +18,7 @@ export function PostingCardGrid({ postings }: { postings: Posting[] }) {
   return (
     <div className="grid gap-x-10 gap-y-4 pt-2 sm:grid-cols-2 lg:grid-cols-3">
       {cards.map(({ posting, prevTilt }) => (
-        <PostingCard key={posting.id} posting={posting} tiltId={posting.id} prevTilt={prevTilt} />
+        <PostingCard key={posting.id} posting={posting} tiltId={posting.id} prevTilt={prevTilt} signedIn={signedIn} />
       ))}
     </div>
   );
