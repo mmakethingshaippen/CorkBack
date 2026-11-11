@@ -63,20 +63,9 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
     return { ok: false, error: "Invalid pin position." };
   }
 
-  // At most one RSVP link: a single http(s) URL string, or nothing.
-  let rsvpUrl: string | null = null;
-  if (r.rsvpUrl != null && r.rsvpUrl !== "") {
-    if (typeof r.rsvpUrl !== "string") return { ok: false, error: "Only one RSVP link is allowed." };
-    const trimmed = r.rsvpUrl.trim();
-    try {
-      const u = new URL(trimmed);
-      if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("scheme");
-    } catch {
-      return { ok: false, error: "RSVP link must be a valid http(s) URL." };
-    }
-    if (/\s/.test(trimmed)) return { ok: false, error: "Only one RSVP link is allowed." };
-    rsvpUrl = trimmed;
-  }
+  const rsvp = parseRsvpUrl(r.rsvpUrl);
+  if (!rsvp.ok) return rsvp;
+  const rsvpUrl = rsvp.value;
 
   let eventDate: string | null = null;
   if (r.eventDate != null && r.eventDate !== "") {
@@ -148,6 +137,106 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
       expiry,
       expiresAt,
       pin,
+    },
+  };
+}
+
+/** At most one RSVP link: a single http(s) URL string, or nothing. Shared by publish and edit. */
+export function parseRsvpUrl(v: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (v == null || v === "") return { ok: true, value: null };
+  if (typeof v !== "string") return { ok: false, error: "Only one RSVP link is allowed." };
+  const trimmed = v.trim();
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("scheme");
+  } catch {
+    return { ok: false, error: "RSVP link must be a valid http(s) URL." };
+  }
+  if (/\s/.test(trimmed)) return { ok: false, error: "Only one RSVP link is allowed." };
+  return { ok: true, value: trimmed };
+}
+
+/** The content an author may change after publishing. Pin, expiry, flyer, zone and author are NOT editable. */
+export interface ValidatedEdit {
+  title: string;
+  body: string;
+  categorySlug: string;
+  rsvpUrl: string | null;
+  eventDate: string | null;
+  eventTime: string | null;
+  endDate: string | null;
+  endTime: string | null;
+  placeLabel: string;
+}
+
+/** What an edit is judged against: the stored posting, which the edit cannot change. */
+export interface EditContext {
+  expiresAt: string;
+  timeZone: string | null;
+  lat: number;
+  lng: number;
+}
+
+export type EditValidationResult = { ok: true; value: ValidatedEdit } | { ok: false; error: string };
+
+/**
+ * Validate an edit request. Same rules as publishing for the shared fields
+ * (one valid category, one http(s) RSVP link, ISO dates, end after start, no
+ * past events judged in the posting's own time zone), minus everything that is
+ * fixed at publish (pin, expiry preset, flyer). Pure, so it is unit-testable.
+ */
+export function validatePostingEdit(b: unknown, ctx: EditContext, now: Date): EditValidationResult {
+  if (!b || typeof b !== "object") return { ok: false, error: "Invalid request." };
+  const r = b as Record<string, unknown>;
+
+  const category = typeof r.categorySlug === "string" ? CATEGORIES.find((c) => c.slug === r.categorySlug) : undefined;
+  if (!category) return { ok: false, error: "Choose exactly one valid category." };
+  if (typeof r.title !== "string" || !r.title.trim()) return { ok: false, error: "Title is required." };
+
+  const rsvp = parseRsvpUrl(r.rsvpUrl);
+  if (!rsvp.ok) return rsvp;
+
+  let eventDate: string | null = null;
+  if (r.eventDate != null && r.eventDate !== "") {
+    if (!isIsoDate(r.eventDate)) return { ok: false, error: "Event date must be YYYY-MM-DD." };
+    eventDate = r.eventDate;
+  }
+  let endDate: string | null = null;
+  if (r.endDate != null && r.endDate !== "") {
+    if (!isIsoDate(r.endDate)) return { ok: false, error: "End date must be YYYY-MM-DD." };
+    endDate = r.endDate;
+  }
+  let endTime: string | null = null;
+  if (r.endTime != null && r.endTime !== "") {
+    if (!isClockTime(r.endTime)) return { ok: false, error: "End time must be HH:MM (24-hour)." };
+    endTime = r.endTime.slice(0, 5);
+  }
+  if ((endDate || endTime) && !eventDate) return { ok: false, error: "Add the event date before an end date or time." };
+  if (endDate && eventDate && endDate < eventDate) return { ok: false, error: "The end date is before the event date." };
+
+  if (eventDate) {
+    const today = localDate(now, ctx.timeZone ?? FALLBACK_TIME_ZONE);
+    if (eventDate < today && !(endDate && endDate >= today)) {
+      return { ok: false, error: "This event date has already passed. Check the date, including the year." };
+    }
+    const end = eventEnd({ expiresAt: ctx.expiresAt, eventDate, endDate, endTime, timeZone: ctx.timeZone, lat: ctx.lat, lng: ctx.lng });
+    if (end && end.getTime() <= now.getTime()) {
+      return { ok: false, error: "This event has already ended. Check the end date and time." };
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      title: r.title.trim().slice(0, 140),
+      body: typeof r.body === "string" ? r.body : "",
+      categorySlug: category.slug,
+      rsvpUrl: rsvp.value,
+      eventDate,
+      eventTime: typeof r.eventTime === "string" && r.eventTime ? r.eventTime : null,
+      endDate,
+      endTime,
+      placeLabel: typeof r.placeLabel === "string" ? r.placeLabel : "",
     },
   };
 }

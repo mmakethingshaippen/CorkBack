@@ -14,6 +14,11 @@ import { FollowButton } from "@/components/ui/FollowButton";
 import { getViewer } from "@/lib/auth";
 import { MessagePoster } from "@/components/ui/MessagePoster";
 import { PromoteToggle } from "@/components/ui/PromoteToggle";
+import { OwnerControls } from "@/components/ui/OwnerControls";
+import { ReportPosting } from "@/components/ui/ReportPosting";
+import { Replies } from "@/components/ui/Replies";
+import { CorkBand } from "@/components/ui/CorkBand";
+import { getHiddenNotice, hasPendingReport, listReplies } from "@/lib/moderationData";
 import { ShareButton } from "@/components/ui/ShareButton";
 import { isPostingActive } from "@/lib/lifecycle";
 import { createClient } from "@/lib/supabase/server";
@@ -28,7 +33,15 @@ export default async function PostingPage({
 }) {
   const { id } = await params;
   const [posting, viewer] = await Promise.all([getPosting(id), getViewer()]);
-  if (!posting) notFound();
+  if (!posting) {
+    // Deleted and hidden postings read as not found for everyone. The one exception is the AUTHOR of a
+    // posting moderators hid: they are told, given the stated reason, and can still delete it.
+    if (viewer && isUuid(id)) {
+      const notice = await getHiddenNotice(await createClient(), id);
+      if (notice) return <HiddenByModerators id={id} reason={notice.reason} username={viewer.username ?? ""} />;
+    }
+    notFound();
+  }
   const signedIn = viewer !== null;
   const isOwnPosting = viewer?.username === posting.authorUsername;
   const active = isPostingActive(posting);
@@ -39,15 +52,19 @@ export default async function PostingPage({
   let mine: { liked: boolean; plan: PlanKind | null } = { liked: false, plan: null };
   let friendPlans: { username: string; kind: PlanKind }[] = [];
   let followingAuthor = false;
+  let alreadyReported = false;
   if (viewer && isUuid(posting.id)) {
     const supabase = await createClient();
     const author = isOwnPosting ? null : await getProfileByUsername(posting.authorUsername);
-    [mine, friendPlans, followingAuthor] = await Promise.all([
+    [mine, friendPlans, followingAuthor, alreadyReported] = await Promise.all([
       getViewerReaction(supabase, posting.id, viewer.id),
       active ? getFriendPlans(supabase, posting.id, viewer.id) : Promise.resolve([]),
       author ? isFollowing(supabase, viewer.id, author.id) : Promise.resolve(false),
+      isOwnPosting ? Promise.resolve(false) : hasPendingReport(supabase, posting.id, viewer.id),
     ]);
   }
+  // Public replies (RLS: readable on visible postings, active or ended).
+  const replies = isUuid(posting.id) ? await listReplies(await createClient(), posting.id) : [];
 
   // event_date is a calendar date: format it without shifting time zones.
   const formatDate = (d: string) =>
@@ -172,25 +189,40 @@ export default async function PostingPage({
               isOwnPosting={isOwnPosting}
             />
           </div>
-          {/* Owner-only promotion control. */}
-          {isOwnPosting && active ? (
-            <div className="mt-3">
-              <PromoteToggle postingId={posting.id} initialPromoted={posting.isPromoted} />
-            </div>
+          {/* Owner-only controls: promote, edit, delete. */}
+          {isOwnPosting && isUuid(posting.id) ? (
+            <>
+              {active ? (
+                <div className="mt-3">
+                  <PromoteToggle postingId={posting.id} initialPromoted={posting.isPromoted} />
+                </div>
+              ) : null}
+              <div className="mt-3">
+                <OwnerControls
+                  postingId={posting.id}
+                  title={posting.title}
+                  canEdit={active}
+                  variant="page"
+                  after={{ kind: "profile", username: posting.authorUsername }}
+                />
+              </div>
+            </>
           ) : null}
         </div>
 
+        {/* Report: signed-in non-authors; signed-out visitors get a sign-in prompt. The author never sees it. */}
+        {!isOwnPosting && isUuid(posting.id) ? (
+          <ReportPosting postingId={posting.id} signedIn={signedIn} initiallyReported={alreadyReported} />
+        ) : null}
+
         {/* Replies: public comments. No like on replies (locked). */}
-        <section>
-          <h2 className="mb-2 text-lg font-bold text-ink">Replies</h2>
-          {signedIn ? (
-            <p className="text-sm text-ink/60">Be the first to reply.</p>
-          ) : (
-            <p className="text-sm text-ink/60">
-              <NavyLink href="/sign-in">Sign in</NavyLink> to reply. Replies are public comments on this posting.
-            </p>
-          )}
-        </section>
+        <Replies
+          postingId={posting.id}
+          initial={replies}
+          signedIn={signedIn}
+          viewerId={viewer?.id ?? null}
+          open={active}
+        />
 
         <p className="pt-2 text-center text-xs text-ink/50">
           <Link href="/" className="text-deep-navy">
@@ -199,6 +231,35 @@ export default async function PostingPage({
         </p>
       </article>
 
+      <BottomNav />
+    </main>
+  );
+}
+
+/**
+ * Shown ONLY to the author of a posting that moderators hid: what happened, the
+ * moderator's stated reason, and a way to delete it. It never shows reporters or
+ * report details. Everyone else gets the neutral not-found page.
+ */
+function HiddenByModerators({ id, reason, username }: { id: string; reason: string | null; username: string }) {
+  return (
+    <main className="min-h-screen pb-24">
+      <TopBar back={{ href: "/", label: "Back to map" }} />
+      <div className="mx-auto max-w-xl space-y-4 px-4">
+        <CorkBand>
+          <h1 className="text-xl font-bold text-paper">Hidden by CorkBack moderators</h1>
+        </CorkBand>
+        <div role="status" className="rounded-card border-2 border-board bg-board/40 p-4">
+          <p className="font-bold text-ink">This posting is hidden from the board.</p>
+          <p className="mt-1 text-sm text-ink/80">
+            CorkBack moderators hid it, so nobody else can see it, and likes, plans, replies and new messages are closed.
+          </p>
+          <p className="mt-2 text-sm text-ink">
+            <span className="font-bold">Reason from the moderators:</span> {reason ?? "No reason was recorded."}
+          </p>
+        </div>
+        <OwnerControls postingId={id} title="your hidden posting" canEdit={false} variant="page" after={{ kind: "profile", username }} />
+      </div>
       <BottomNav />
     </main>
   );

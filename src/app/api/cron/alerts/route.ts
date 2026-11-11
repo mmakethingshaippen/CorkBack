@@ -43,6 +43,8 @@ export async function GET(req: Request) {
     .from("postings")
     .select("id, author_id, lat, lng, expires_at, event_date, end_date, end_time, time_zone, deleted_at, title, event_time, place_label, categories(slug)")
     .is("deleted_at", null)
+    // The service role bypasses RLS, so moderated postings must be excluded here explicitly: never email a hidden posting.
+    .is("moderation_hidden_at", null)
     .gt("expires_at", nowIso);
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
 

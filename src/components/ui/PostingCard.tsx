@@ -3,6 +3,7 @@ import { Card } from "./Card";
 import { CategoryChip } from "./CategoryChip";
 import { PosterHandle } from "./PosterHandle";
 import { CardLike } from "./CardLike";
+import { OwnerControls } from "./OwnerControls";
 import { categoryLabel } from "@/lib/categories";
 import type { Posting } from "@/lib/types";
 
@@ -16,11 +17,14 @@ export function PostingCard({
   tiltId,
   prevTilt = null,
   signedIn = false,
+  isOwner = false,
 }: {
   posting: Posting;
   tiltId: string;
   prevTilt?: number | null;
   signedIn?: boolean;
+  /** The viewer is this posting's author: show Edit and Delete (own profile only). */
+  isOwner?: boolean;
 }) {
   // event_date is a calendar date: format it without shifting time zones.
   const dateLabel = posting.eventDate
@@ -57,6 +61,9 @@ export function PostingCard({
           stateAt={posting.viewerStateAt}
         />
       </div>
+      {isOwner ? (
+        <OwnerControls postingId={posting.id} title={posting.title} canEdit variant="card" after={{ kind: "refresh" }} />
+      ) : null}
     </Card>
   );
 }

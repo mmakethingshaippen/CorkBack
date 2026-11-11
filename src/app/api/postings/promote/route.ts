@@ -2,17 +2,14 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Stage 4 — mark/unmark a posting as promoted. OWNER ONLY.
+ * Mark/unmark a posting as promoted. OWNER ONLY.
  *
- * POST { postingId, promoted: boolean } → set is_promoted on the caller's own,
- * live (non-deleted) posting. A non-owner is blocked (RLS: the postings update
- * policy only allows auth.uid() = author_id; we also check explicitly for a
- * readable 403). No payment, no price — label + placement only.
- *
- * Promotion is effective only while the posting is live: it ends at expiry and
- * ends on delete. We do not clear the flag at expiry (ordering already ignores
- * expired/deleted rows since they are not in the active list), but we refuse to
- * promote an already-expired or deleted posting.
+ * POST { postingId, promoted: boolean } → public.set_posting_promoted(), the one
+ * authorized operation (stage 8): author only, visible postings only, and
+ * promoting only while the posting is active (un-promoting is always allowed).
+ * Phase B of the stage 8 SQL removes clients' direct UPDATE of is_promoted, so
+ * this must not write the column itself. No payment, no price — label +
+ * placement only.
  */
 export async function POST(req: Request) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -32,29 +29,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "promoted must be true or false." }, { status: 400 });
   }
 
-  // Ownership + liveness check (readable errors; RLS is the real guard).
-  const { data: posting } = await supabase
-    .from("postings")
-    .select("id, author_id, deleted_at, expires_at")
-    .eq("id", postingId)
-    .maybeSingle();
-  if (!posting) return NextResponse.json({ error: "Posting not found." }, { status: 404 });
-  if (posting.author_id !== user.id) {
-    return NextResponse.json({ error: "You can only promote your own posting." }, { status: 403 });
+  // Authorization lives in the database: public.set_posting_promoted allows only the
+  // author, only on a visible posting, and promoting only while it is active.
+  const { data, error } = await supabase.rpc("set_posting_promoted", { p_posting_id: postingId, p_promoted: promoted });
+  if (error) {
+    console.error("[CorkBack] promote failed:", { code: error.code, message: error.message });
+    switch (error.code) {
+      case "42501": return NextResponse.json({ error: "Sign in to manage promotion." }, { status: 401 });
+      case "CB404": return NextResponse.json({ error: "Posting not found, or it isn't yours." }, { status: 404 });
+      case "CB409": return NextResponse.json({ error: "This posting has ended; promotion only applies while it is live." }, { status: 409 });
+      case "22P02": return NextResponse.json({ error: "Missing postingId." }, { status: 400 });
+      default: return NextResponse.json({ error: "Could not update promotion." }, { status: 500 });
+    }
   }
-  if (posting.deleted_at) {
-    return NextResponse.json({ error: "This posting is deleted." }, { status: 400 });
-  }
-  if (promoted && new Date(posting.expires_at).getTime() <= Date.now()) {
-    return NextResponse.json({ error: "This posting has expired; promotion only applies while it is live." }, { status: 400 });
-  }
-
-  const { error } = await supabase
-    .from("postings")
-    .update({ is_promoted: promoted })
-    .eq("id", postingId)
-    .eq("author_id", user.id); // defense in depth alongside RLS
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-
-  return NextResponse.json({ ok: true, promoted });
+  return NextResponse.json({ ok: true, promoted: data === "promoted" });
 }

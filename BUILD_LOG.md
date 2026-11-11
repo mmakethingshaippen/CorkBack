@@ -423,3 +423,23 @@ Max approved deploying only the read-only expiry route.
   - signed-out states; 390/1280 layouts; loading state
 - **Bug found and fixed:** on an expired session, the action hook refreshed into the signed-out view and the "sign in again" message disappeared. It now keeps the message and doesn't refresh on 401.
 - **Cleanup:** disposable accounts and [TEST] postings deleted; zero residue; totals at baseline; ffe92f35 unchanged.
+
+## 2026-11-11: Stage 8 implementation (branch `feature/moderation-ui`, from `origin/main` 6289a7e; not pushed)
+- **Second SQL review addressed first** (files in `supabase/`, phase A since applied by Max: 30 catalog + 97 role checks passed):
+  - replies only through `submit_reply` with a durable ledger and a per-user lock;
+  - `posting_reaction_counts` no longer returns rows for hidden postings;
+  - `admin_hide_posting` rejects a report id from another posting;
+  - report / dismiss / hide share one lock order, so a report cannot be added after its posting is hidden or deleted;
+  - tighter audit trigger, explicit rollback revokes.
+  Isolated run 52/52 with a multi-session concurrency suite; seven deliberate regressions each fail it (one produced 17 deadlock errors).
+- **Built:** reporting (panel, API, all states), `/admin` (queue, filters, details, dismiss/hide/restore, recent actions), public replies (composer, list, delete, limits), owner Edit/Delete (posting page, profile cards, ended and moderated postings), `PromoteToggle` through `set_posting_promoted`, the author's "hidden by moderators" notice, a neutral not-found for postings, alerts cron excluding hidden postings. Card Like/Unlike and the "Unlike" label were already on this branch.
+- **Checks:** typecheck, lint, 188 unit tests, production build (outside OneDrive).
+- **Verification against production phase A** (local production build, live database, disposable accounts, hidden state simulated with a service-role update on [TEST] postings):
+  - REST/RLS with real JWTs: 24/24
+  - browser: reporting 24/24, owner edit/delete/promote/Like label 27/27, replies 21/21, hidden surfaces and social regression 22/22
+  - Stage 4 messaging 75/75 and card Likes 25/25 re-run
+  - card overlap 0 at 390/768/1280 with owner controls
+- **Admin dashboard:** 27/27 in a real browser against the real build with an **isolated** database (embedded Postgres + PostgREST behind a stub of the two Supabase endpoints). Not yet run on production: waiting for Max to grant the temporary admin.
+- **Bugs found and fixed while building:** `/admin` with a `loading.tsx` answered a non-admin's not-found with 200 (removed); Report focus was lost after Escape/Cancel (trigger not mounted while open); a validation message renamed Send to "Try again"; two of my edits to the posting page were lost to a parallel-write race and caught by the suite.
+- **Pre-existing, not fixed:** intermittent React #418 on signed-in page loads; reproduces on a build of `origin/main`.
+- **Cleanup:** all disposable users and [TEST] data deleted; existing rows byte-identical (hash), totals at baseline, `ffe92f35` unchanged. Left: one disposable admin-test account (no admin rights yet).

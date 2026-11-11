@@ -8,6 +8,8 @@ import { getViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isFollowing } from "@/lib/follows";
 import { FollowButton } from "@/components/ui/FollowButton";
+import { NavyLink } from "@/components/ui/actions";
+import { viewerIsAdmin } from "@/lib/moderationData";
 import { ConnectButton } from "@/components/ui/ConnectButton";
 import { getRelationship } from "@/lib/connections";
 import type { Relationship } from "@/lib/connectionState";
@@ -19,10 +21,13 @@ import type { Relationship } from "@/lib/connectionState";
  */
 export default async function ProfilePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ username: string }>;
+  searchParams: Promise<{ deleted?: string }>;
 }) {
   const { username } = await params;
+  const { deleted } = await searchParams;
 
   const profile = await getProfileByUsername(username);
   if (!profile) notFound();
@@ -32,6 +37,8 @@ export default async function ProfilePage({
   const isSelf = viewer?.id === profile.id;
   let following = false;
   let relationship: Relationship = "none";
+  // The Admin link is a convenience on the admin's OWN profile only; /admin enforces access itself.
+  const showAdminLink = isSelf && viewer ? await viewerIsAdmin(await createClient()) : false;
   if (viewer && !isSelf && !profile.id.startsWith("seed-")) {
     const supabase = await createClient();
     // Follow and friendship are read separately: neither implies the other.
@@ -46,7 +53,17 @@ export default async function ProfilePage({
       <TopBar back={{ href: "/", label: "Back to map" }} />
       <div className="space-y-4 px-4">
         <PosterHandle username={profile.username} className="text-2xl" />
+        {isSelf && deleted === "1" ? (
+          <p role="status" className="rounded-card border border-board bg-board/40 p-3 font-bold text-ink">
+            Your posting was deleted. It&apos;s off the map and your profile.
+          </p>
+        ) : null}
         <p className="text-ink/70">{isSelf ? "This is your profile." : "Neighbour on CorkBack."}</p>
+        {showAdminLink ? (
+          <p>
+            <NavyLink href="/admin" className="font-bold">Admin: reports and moderation</NavyLink>
+          </p>
+        ) : null}
         <FollowButton
           username={profile.username}
           initialFollowing={following}
@@ -65,7 +82,7 @@ export default async function ProfilePage({
           {postings.length === 0 ? (
             <p className="text-sm text-ink/60">No active postings from @{profile.username} right now.</p>
           ) : (
-            <PostingCardGrid postings={postings} signedIn={viewer !== null} />
+            <PostingCardGrid postings={postings} signedIn={viewer !== null} ownerView={isSelf} />
           )}
         </section>
       </div>

@@ -134,3 +134,11 @@ The final writeup is built from this log, not from memory.
   - Diagnosed a rapid-click test failure by logging requests rather than changing app code (Playwright queues clicks).
   - Caught a tilted-card overlap from a screenshot, then added a geometry assertion so it can't regress unnoticed.
 - **Real-browser testing:** two separate Edge sessions with disposable accounts, plus PostgREST permission tests using real user JWTs. Temp tools lived outside the repo and were removed afterwards.
+
+## Nov 11: Stage 8 implementation (2026-11-11)
+- **Specs:** implemented from `.kiro/specs/moderation` (requirements, design, tasks) on a new branch from `origin/main`, with the approved decisions and the database functions Max applied. Updated the design where building changed it (replies use the `submit_reply` RPC; no `loading.tsx` on `/admin`).
+- **Kiro IDE:**
+  - Addressed a second SQL review before any code: concurrency, a leaking aggregate, and lock ordering, each proved with failing-then-passing tests.
+  - Mutation-checked the tests by breaking each fix on purpose and confirming the suite failed.
+  - Found a pre-existing hydration flake by building `origin/main` and running the same loop.
+- **Real-browser testing:** separate Edge sessions per role against a production build; the admin dashboard against an isolated database through a stub of the Supabase endpoints, so it was exercised before any real admin existed. Temp tools stayed outside the repo.
