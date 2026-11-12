@@ -443,3 +443,19 @@ Max approved deploying only the read-only expiry route.
 - **Bugs found and fixed while building:** `/admin` with a `loading.tsx` answered a non-admin's not-found with 200 (removed); Report focus was lost after Escape/Cancel (trigger not mounted while open); a validation message renamed Send to "Try again"; two of my edits to the posting page were lost to a parallel-write race and caught by the suite.
 - **Pre-existing, not fixed:** intermittent React #418 on signed-in page loads; reproduces on a build of `origin/main`.
 - **Cleanup:** all disposable users and [TEST] data deleted; existing rows byte-identical (hash), totals at baseline, `ffe92f35` unchanged. Left: one disposable admin-test account (no admin rights yet).
+
+## 2026-11-12: Card reactions, admin-test status, corrected release checklist (branch `feature/moderation-ui`, commit 0ae43bf; not pushed)
+- **Built:** Like / Going / Interested on posting cards (home, Following, profiles) using the existing like and plan routes; harness in `scripts/card-e2e/`.
+- **Verified (local production build + live database, disposable accounts, Edge):** 60/60 harness checks. Cleanup matched the baseline counts and hashes.
+- **Preview:** https://cork-back-c5upfb720-max-082a.vercel.app (`dpl_7dJgowMeE8qBt2JJpVeGUEiCr55S`, source = 0ae43bf). It is built and protected (unauthenticated requests get 302). **No functional test was run on the preview.**
+- **Temporary admin accounts (both gone):** `cbsoc_admin_f5d559` was deleted by something other than this work (not attributed). `cbsoc_admin_a5eb62` was created for the production admin test, granted and revoked by Max, then deleted.
+- **CORRECTION to the release checklist:** after the revoke, `is_admin()` returned false for `cbsoc_admin_a5eb62`. That only shows the revoke worked. **It did not test the production admin dashboard**, and the grant was never exercised in a browser.
+- **PENDING, not verified on production (do not call Stage 8 fully verified until all are done with an authorized test account):**
+  - admin queue (list, filters, details)
+  - dismiss a report
+  - hide a posting
+  - restore a posting
+  - audit entries (`moderation_log`) written for each action
+  - non-admin access to `/admin` and the admin functions refused
+  - The 27/27 admin dashboard run was against an **isolated** database, not production.
+- **Not done:** push, merge, production deploy, Phase B.
