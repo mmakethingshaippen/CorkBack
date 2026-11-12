@@ -1,10 +1,12 @@
-# Core Loop — Tasks
+# Implementation Plan: Core Loop
+
+## Overview
 
 Implementation plan for Stage 1. Components are built before screens. Each task cites the requirements it satisfies. Do not start coding until Max approves the plan and spec. Verify the stage live before Stage 2.
 
 Status key: [x] done & verified locally · [~] built, needs live verification with credentials · [ ] not started.
 
----
+## Tasks
 
 - [x] 1. Project + infra wiring
   - [x] 1.1 Confirm skeleton builds (`npm install`, `typecheck`, `build`). _(Req 7)_
@@ -51,12 +53,31 @@ Status key: [x] done & verified locally · [~] built, needs live verification wi
 - [x] 8. Agent hook in the build
   - [x] 8.1 `typecheck-on-save` hook used; logged in KIRO_USAGE_LOG.md. _(Kiro features)_
 
-- [~] 9. Stage 1 live verification
+- [ ] 9. Stage 1 live verification
   - [x] 9.1 Public/no-credential paths verified live (`next start`): browsing, map, posting page, gates, 404, API safety.
-  - [~] 9.1b Credentialed paths (real sign-up/in, Gemini extract, real publish, cron sweep) — pending Max's Supabase/Gemini keys + `schema.sql` (see SETUP.md).
+  - [ ] 9.1b Credentialed paths (real sign-up/in, Gemini extract, real publish, cron sweep) — pending Max's Supabase/Gemini keys + `schema.sql` (see SETUP.md).
   - [x] 9.2 BUILD_LOG.md and KIRO_USAGE_LOG.md updated. Stop for Max verification before Stage 2.
 
----
+## Task Dependency Graph
+
+Components are built before screens, and the live verification comes last.
+
+```text
+1 Project + infra wiring
+├── 2 Design-system components
+│   ├── 4 Scan and review          (also needs 3)
+│   ├── 6 Map browse               (also needs 5)
+│   └── 7 Posting page             (also needs 3 and 5)
+├── 3 Accounts (email only)
+│   ├── 4 Scan and review
+│   ├── 5 Post (create + lifecycle) (also needs 4)
+│   └── 7 Posting page
+└── 8 Agent hook in the build
+9 Stage 1 live verification        (needs 1 through 8)
+```
+
+## Notes
 
 ### Logged for later stages (not Stage 1)
+
 Alerts (Stage 2), messaging + private DMs (Stage 3), promoted postings (Stage 4), polish + seed real boards + demo video + writeup (Stage 5). Additional property tests, Kiro Powers, MCP, and custom agents are added only when a real job in those stages needs them; otherwise the final writeup states none was used.
