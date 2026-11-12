@@ -65,6 +65,33 @@ export async function getViewerLikedIds(
   return out;
 }
 
+/**
+ * The viewer's own plan (going/interested) for these postings. RLS lets the
+ * viewer read their own plan rows; the user_id filter keeps friends' rows out.
+ * On error, returns an empty map: cards then show "no plan" and the plan route corrects it.
+ */
+export async function getViewerPlans(
+  supabase: SupabaseClient,
+  userId: string,
+  ids: string[],
+): Promise<Map<string, PlanKind>> {
+  const out = new Map<string, PlanKind>();
+  if (ids.length === 0) return out;
+  const { data, error } = await supabase
+    .from("plans")
+    .select("posting_id, kind")
+    .eq("user_id", userId)
+    .in("posting_id", ids.slice(0, 500));
+  if (error) {
+    console.error("[CorkBack] viewer plans failed:", { code: error.code, message: error.message });
+    return out;
+  }
+  for (const r of (data ?? []) as { posting_id: string; kind: PlanKind }[]) {
+    out.set(String(r.posting_id), r.kind);
+  }
+  return out;
+}
+
 export async function getViewerReaction(
   supabase: SupabaseClient,
   postingId: string,

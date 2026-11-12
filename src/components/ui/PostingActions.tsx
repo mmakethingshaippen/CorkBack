@@ -7,7 +7,7 @@ import { SignInToTakePart } from "./SignInToTakePart";
 import { ShareButton } from "./ShareButton";
 import { PosterHandle } from "./PosterHandle";
 import { applyLike, applyPlan, countLabel, likeButtonLabel, likeErrorMessage, nextPlan } from "@/lib/reactionState";
-import { initialLike, setConfirmedLike } from "@/lib/likeStore";
+import { initialLike, initialPlan, setConfirmedLike, setConfirmedPlan } from "@/lib/likeStore";
 import type { PlanKind, ReactionCounts } from "@/lib/types";
 
 interface Snapshot {
@@ -46,7 +46,16 @@ export function PostingActions({
   // A like confirmed in this tab (e.g. from a card) wins over an older cached render.
   const [start] = useState<Snapshot>(() => {
     const l = initialLike(postingId, { liked: initial.liked, likes: initial.counts.likes }, stateAt);
-    return { ...initial, liked: l.liked, counts: { ...initial.counts, likes: l.likes } };
+    const p = initialPlan(
+      postingId,
+      { plan: initial.plan, going: initial.counts.going, interested: initial.counts.interested },
+      stateAt,
+    );
+    return {
+      liked: l.liked,
+      plan: p.plan,
+      counts: { likes: l.likes, going: p.going, interested: p.interested },
+    };
   });
   const [saved, setSaved] = useState<Snapshot>(start);
   const [view, setView] = useState<Snapshot>(start);
@@ -121,7 +130,12 @@ export function PostingActions({
       };
       setSaved(confirmed);
       setView(confirmed);
-      if (kind === "like") setConfirmedLike(postingId, { liked: confirmed.liked, likes: confirmed.counts.likes }, data.at);
+      setConfirmedLike(postingId, { liked: confirmed.liked, likes: confirmed.counts.likes }, data.at);
+      setConfirmedPlan(
+        postingId,
+        { plan: confirmed.plan, going: confirmed.counts.going, interested: confirmed.counts.interested },
+        data.at,
+      );
     } catch {
       setView(saved);
       setMessage("Could not reach CorkBack. Check your connection and try again.");

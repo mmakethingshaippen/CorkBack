@@ -42,7 +42,37 @@ export function initialLike(postingId: string, server: LikeEntry, renderedAt: st
   return server;
 }
 
+/**
+ * Same idea for the viewer's Going/Interested plan. The entry carries the
+ * plan and both public plan totals (a plan change moves both).
+ */
+export interface PlanEntry {
+  plan: "going" | "interested" | null;
+  going: number;
+  interested: number;
+}
+
+interface StoredPlan extends PlanEntry {
+  at: number;
+}
+
+const planStore = new Map<string, StoredPlan>();
+
+export function setConfirmedPlan(postingId: string, entry: PlanEntry, serverAt: string | null | undefined): void {
+  const at = toMs(serverAt);
+  const prev = planStore.get(postingId);
+  if (prev && prev.at > at) return;
+  planStore.set(postingId, { ...entry, at });
+}
+
+export function initialPlan(postingId: string, server: PlanEntry, renderedAt: string | null | undefined): PlanEntry {
+  const e = planStore.get(postingId);
+  if (e && e.at > toMs(renderedAt)) return { plan: e.plan, going: e.going, interested: e.interested };
+  return server;
+}
+
 /** Test helper. */
 export function clearLikeStore(): void {
   store.clear();
+  planStore.clear();
 }

@@ -62,6 +62,22 @@ export function likeErrorMessage(code: string | undefined, error: string | undef
   return error ?? "Could not save. Try again.";
 }
 
+/**
+ * Accessible name for a Going / Interested toggle. Names the action and keeps
+ * the total; selection itself is `aria-pressed`.
+ */
+export function planButtonLabel(kind: PlanKind, selected: boolean, count: number): string {
+  const word = kind === "going" ? "Going" : "Interested";
+  const verb = selected ? `Clear ${word}` : `Mark ${word}`;
+  return `${verb}. ${count} ${kind === "going" ? "going" : "interested"}`;
+}
+
+/** Readable text for a failed plan save, from the plan route's `code`. */
+export function planErrorMessage(code: string | undefined, error: string | undefined): string {
+  if (code === "ended") return "This posting has ended. Plans are closed.";
+  return likeErrorMessage(code, error);
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function isUuid(s: unknown): s is string {
   return typeof s === "string" && UUID_RE.test(s);

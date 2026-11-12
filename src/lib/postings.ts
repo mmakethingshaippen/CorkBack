@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "./supabase/server";
 import { isPostingActive } from "./lifecycle";
 import { orderWithPromoted } from "./promotion";
-import { getReactionCounts, getViewerLikedIds } from "./reactions";
+import { getReactionCounts, getViewerLikedIds, getViewerPlans } from "./reactions";
 import type { Posting } from "./types";
 import { SEED_POSTINGS, findSeedPosting } from "./seed";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
@@ -97,15 +97,25 @@ async function withCounts(supabase: SupabaseClient, postings: Posting[]): Promis
 }
 
 /**
- * Attach the viewer's own saved like to each posting (for card Like buttons).
- * Signed out: unchanged. One query for the whole list.
+ * Attach the viewer's own saved like and plan to each posting (for the card
+ * Like / Going / Interested buttons). Signed out: unchanged. Two queries for
+ * the whole list.
  */
 export async function attachViewerLikes(postings: Posting[], viewerId: string | null): Promise<Posting[]> {
   if (!viewerId || postings.length === 0 || !supabaseConfigured()) return postings;
   const supabase = await createClient();
-  const stateAt = new Date().toISOString(); // before the read: a like confirmed after this is newer
-  const liked = await getViewerLikedIds(supabase, viewerId, postings.map((p) => p.id));
-  return postings.map((p) => ({ ...p, viewerLiked: liked.has(p.id), viewerStateAt: stateAt }));
+  const stateAt = new Date().toISOString(); // before the read: a reaction confirmed after this is newer
+  const ids = postings.map((p) => p.id);
+  const [liked, plans] = await Promise.all([
+    getViewerLikedIds(supabase, viewerId, ids),
+    getViewerPlans(supabase, viewerId, ids),
+  ]);
+  return postings.map((p) => ({
+    ...p,
+    viewerLiked: liked.has(p.id),
+    viewerPlan: plans.get(p.id) ?? null,
+    viewerStateAt: stateAt,
+  }));
 }
 
 /** Active (not expired, not deleted, event not over) postings for the map. */

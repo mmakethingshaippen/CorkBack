@@ -29,6 +29,8 @@ export interface Posting {
   createdAt: string;
   /** Whether the CURRENT viewer liked it (their own saved like; never anyone else's). Absent when signed out. */
   viewerLiked?: boolean;
+  /** The CURRENT viewer's own Going/Interested choice (never anyone else's). Absent when signed out. */
+  viewerPlan?: PlanKind | null;
   /** Server time the viewer state and counts were read (ISO); see src/lib/likeStore.ts. */
   viewerStateAt?: string;
 }

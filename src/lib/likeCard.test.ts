@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { likeButtonLabel, likeErrorMessage, applyLike } from "./reactionState";
-import { clearLikeStore, initialLike, setConfirmedLike } from "./likeStore";
+import { likeButtonLabel, likeErrorMessage, applyLike, applyPlan, nextPlan, planButtonLabel, planErrorMessage } from "./reactionState";
+import { clearLikeStore, initialLike, initialPlan, setConfirmedLike, setConfirmedPlan } from "./likeStore";
 
 describe("like button label (approved wording)", () => {
   it("names the action and keeps the count", () => {
@@ -62,5 +62,37 @@ describe("card/detail like consistency store", () => {
   it("entries are per posting", () => {
     setConfirmedLike("p1", { liked: true, likes: 4 }, "2026-11-10T10:00:05Z");
     expect(initialLike("p2", server, "2026-11-10T10:00:00Z")).toEqual(server);
+  });
+});
+
+describe("card plan labels and consistency store", () => {
+  beforeEach(() => clearLikeStore());
+
+  it("names the action and keeps the total", () => {
+    expect(planButtonLabel("going", false, 2)).toBe("Mark Going. 2 going");
+    expect(planButtonLabel("going", true, 3)).toBe("Clear Going. 3 going");
+    expect(planButtonLabel("interested", false, 0)).toBe("Mark Interested. 0 interested");
+  });
+
+  it("plan messages explain ended postings", () => {
+    expect(planErrorMessage("ended", "x")).toMatch(/Plans are closed/);
+    expect(planErrorMessage("write_failed", "Could not save. Try again.")).toBe("Could not save. Try again.");
+  });
+
+  it("a newer confirmed plan wins over an older render; a fresher render wins over the store", () => {
+    const server = { plan: null, going: 1, interested: 0 } as const;
+    setConfirmedPlan("p1", { plan: "interested", going: 0, interested: 1 }, "2026-11-10T10:00:05Z");
+    expect(initialPlan("p1", server, "2026-11-10T10:00:00Z")).toEqual({ plan: "interested", going: 0, interested: 1 });
+    expect(initialPlan("p1", server, "2026-11-10T10:01:00Z")).toEqual(server);
+  });
+
+  it("Going -> Interested -> cleared keeps totals exact", () => {
+    let c = { likes: 0, going: 1, interested: 0 };
+    c = applyPlan(c, null, "going");
+    expect(c).toEqual({ likes: 0, going: 2, interested: 0 });
+    c = applyPlan(c, "going", "interested");
+    expect(c).toEqual({ likes: 0, going: 1, interested: 1 });
+    c = applyPlan(c, "interested", nextPlan("interested", "interested"));
+    expect(c).toEqual({ likes: 0, going: 1, interested: 0 });
   });
 });
