@@ -7,6 +7,7 @@ import { HomeMap } from "@/components/map/HomeMap";
 import { redirect } from "next/navigation";
 import { attachViewerLikes, listActivePostings } from "@/lib/postings";
 import { getViewer, getViewerHomePoint } from "@/lib/auth";
+import { viewerFollowedCategorySlugs } from "@/lib/categoryFollows";
 import { AuthHashForwarder } from "@/components/auth/AuthHashForwarder";
 
 // Public home: local-first map + filterable rail. No account wall for browsing.
@@ -51,6 +52,7 @@ export default async function Home({
   // Signed-in viewer's alert home point — used only as a map-centering fallback
   // when device location is unavailable. Never shown publicly.
   const homePoint = viewer ? await getViewerHomePoint() : null;
+  const followedCategories = await viewerFollowedCategorySlugs(viewer?.id ?? null);
 
   return (
     <main className="min-h-screen pb-24">
@@ -96,7 +98,7 @@ export default async function Home({
             <p className="mt-1 text-sm text-ink/80">{loadError}</p>
           </div>
         ) : (
-          <HomeMap postings={postings} homePoint={homePoint} signedIn={viewer !== null} />
+          <HomeMap postings={postings} homePoint={homePoint} signedIn={viewer !== null} followedCategories={followedCategories} />
         )}
       </section>
 

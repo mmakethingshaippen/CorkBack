@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CategoryChip } from "@/components/ui/CategoryChip";
+import { CategoryFollowButton } from "@/components/ui/CategoryFollowButton";
 import { CATEGORIES } from "@/lib/categories";
 
 /**
@@ -23,7 +24,7 @@ interface AlertRow {
   categories: { slug: string; label: string } | null;
 }
 
-export function AlertsManager() {
+export function AlertsManager({ followedCategories = [] }: { followedCategories?: string[] }) {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
@@ -92,7 +93,10 @@ export function AlertsManager() {
           <p className="mb-2 text-sm font-bold text-ink">Category</p>
           <div className="flex flex-wrap gap-2">
             {CATEGORIES.map((c) => (
-              <CategoryChip key={c.slug} label={c.label} selected={category === c.slug} onClick={() => setCategory(c.slug)} />
+              <span key={c.slug} className="inline-flex items-center gap-1">
+                <CategoryChip label={c.label} selected={category === c.slug} onClick={() => setCategory(c.slug)} />
+                <CategoryFollowButton slug={c.slug} label={c.label} initialFollowing={followedCategories.includes(c.slug)} signedIn />
+              </span>
             ))}
           </div>
         </div>

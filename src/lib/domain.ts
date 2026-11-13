@@ -178,3 +178,8 @@ export function tiltClearance(tiltDeg: number): string {
   const pct = (Math.sin((Math.abs(tiltDeg) * Math.PI) / 180) / 2) * 100;
   return `calc(${pct.toFixed(3)}% + 6px)`;
 }
+
+/** Usernames are saved lowercase so a new account cannot create a case variant. Validate first, then normalize. */
+export function normalizeUsername(username: string): string {
+  return username.toLowerCase();
+}

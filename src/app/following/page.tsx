@@ -5,6 +5,9 @@ import { CorkBand } from "@/components/ui/CorkBand";
 import { PostingCardGrid } from "@/components/ui/PostingCardGrid";
 import { PosterHandle } from "@/components/ui/PosterHandle";
 import { SignInToTakePart } from "@/components/ui/SignInToTakePart";
+import { CategoryChip } from "@/components/ui/CategoryChip";
+import { CategoryFollowButton } from "@/components/ui/CategoryFollowButton";
+import { categoryLabel } from "@/lib/categories";
 import { getViewer } from "@/lib/auth";
 import { getFollowingFeed } from "@/lib/follows";
 import { attachViewerLikes } from "@/lib/postings";
@@ -21,7 +24,7 @@ export const dynamic = "force-dynamic";
 export default async function FollowingPage() {
   const viewer = await getViewer();
 
-  let feed: { followees: { id: string; username: string }[]; postings: Posting[] } | null = null;
+  let feed: { followees: { id: string; username: string }[]; categories: string[]; postings: Posting[] } | null = null;
   let loadError: string | null = null;
   if (viewer) {
     try {
@@ -56,12 +59,12 @@ export default async function FollowingPage() {
               Try again
             </Link>
           </div>
-        ) : feed && feed.followees.length === 0 ? (
+        ) : feed && feed.followees.length === 0 && feed.categories.length === 0 ? (
           <CorkBand>
             <p className="font-bold text-paper">You&apos;re not following anyone yet.</p>
             <p className="mt-1 text-paper/90">
-              Open a poster&apos;s profile or one of their postings and choose Follow. Their active postings will
-              show up here.
+              Open a poster&apos;s profile or one of their postings and choose Follow, or follow a category on the
+              map. Their active postings will show up here.
             </p>
             <Link href="/" className="mt-3 inline-block font-bold text-paper underline underline-offset-2">
               Browse the map
@@ -71,8 +74,7 @@ export default async function FollowingPage() {
           <CorkBand>
             <p className="font-bold text-paper">Nothing active right now.</p>
             <p className="mt-1 text-paper/90">
-              The {feed.followees.length === 1 ? "poster" : `${feed.followees.length} posters`} you follow{" "}
-              {feed.followees.length === 1 ? "has" : "have"} no active postings. Check back later.
+              Nothing you follow has an active posting. Check back later.
             </p>
           </CorkBand>
         ) : (
@@ -84,6 +86,19 @@ export default async function FollowingPage() {
           </section>
         )}
 
+        {viewer && feed && feed.categories.length > 0 ? (
+          <section className="pt-2">
+            <h2 className="mb-2 text-lg font-bold text-ink">Categories you follow</h2>
+            <ul className="flex flex-wrap gap-x-4 gap-y-2">
+              {feed.categories.map((slug) => (
+                <li key={slug} className="inline-flex items-center gap-1">
+                  <CategoryChip label={categoryLabel(slug)} as="span" />
+                  <CategoryFollowButton slug={slug} label={categoryLabel(slug)} initialFollowing signedIn />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {viewer && feed && feed.followees.length > 0 ? (
           <section className="pt-2">
             <h2 className="mb-2 text-lg font-bold text-ink">You follow</h2>

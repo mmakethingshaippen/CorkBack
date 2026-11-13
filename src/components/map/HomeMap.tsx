@@ -7,6 +7,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { Posting } from "@/lib/types";
 import { CATEGORIES } from "@/lib/categories";
 import { CategoryChip } from "@/components/ui/CategoryChip";
+import { CategoryFollowButton } from "@/components/ui/CategoryFollowButton";
 import { PostingCardGrid } from "@/components/ui/PostingCardGrid";
 
 /**
@@ -106,10 +107,12 @@ export function HomeMap({
   postings,
   homePoint,
   signedIn = false,
+  followedCategories = [],
 }: {
   postings: Posting[];
   homePoint: { lat: number; lng: number; townName: string | null } | null;
   signedIn?: boolean;
+  followedCategories?: string[];
 }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -432,12 +435,19 @@ export function HomeMap({
       <div className="flex flex-wrap gap-2">
         <CategoryChip label="All" selected={activeCategory === null} onClick={() => setActiveCategory(null)} />
         {CATEGORIES.map((c) => (
-          <CategoryChip
-            key={c.slug}
-            label={c.label}
-            selected={activeCategory === c.slug}
-            onClick={() => setActiveCategory(activeCategory === c.slug ? null : c.slug)}
-          />
+          <span key={c.slug} className="inline-flex items-center gap-1">
+            <CategoryChip
+              label={c.label}
+              selected={activeCategory === c.slug}
+              onClick={() => setActiveCategory(activeCategory === c.slug ? null : c.slug)}
+            />
+            <CategoryFollowButton
+              slug={c.slug}
+              label={c.label}
+              initialFollowing={followedCategories.includes(c.slug)}
+              signedIn={signedIn}
+            />
+          </span>
         ))}
       </div>
 

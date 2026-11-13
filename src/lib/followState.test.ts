@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { buildFollowingFeed, canFollow, parseFollowBody } from "./followState";
+import { buildFollowingFeed, canFollow, mergeCategoryPostings, parseFollowBody } from "./followState";
 import type { Posting } from "./types";
 
 const now = new Date("2026-11-08T20:00:00Z");
@@ -72,5 +72,15 @@ describe("Following feed", () => {
         },
       ),
     );
+  });
+});
+
+describe("mergeCategoryPostings", () => {
+  it("adds active postings in followed categories, de-duplicates, newest first", () => {
+    const a = post("a", { createdAt: "2026-11-02T00:00:00Z" });
+    const b = post("b", { categorySlug: "music", createdAt: "2026-11-03T00:00:00Z" });
+    const c = post("c", { categorySlug: "jobs", createdAt: "2026-11-04T00:00:00Z" });
+    const out = mergeCategoryPostings([a, b], [a, b, c], new Set(["music"]), now);
+    expect(out.map((p) => p.id)).toEqual(["b", "a"]);
   });
 });

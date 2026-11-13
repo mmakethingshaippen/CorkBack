@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { usernameRejection } from "@/lib/domain";
+import { normalizeUsername, usernameRejection } from "@/lib/domain";
 import { getAppUrl } from "@/lib/appUrl";
 import { completeSignUp } from "@/lib/signup";
 
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
         return error ? { code: error.code } : null;
       },
     },
-    { email, password, username },
+    { email, password, username: normalizeUsername(username) },
   );
   return NextResponse.json(result.body, { status: result.status });
 }

@@ -1,8 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "./supabase/server";
-import { buildFollowingFeed } from "./followState";
-import { listPostingRowsByAuthorIds } from "./postings";
+import { buildFollowingFeed, mergeCategoryPostings } from "./followState";
+import { listActivePostings, listPostingRowsByAuthorIds } from "./postings";
+import { listFollowedCategorySlugs } from "./categoryFollows";
 import type { Posting } from "./types";
 
 /**
@@ -39,10 +40,16 @@ export async function listFollowees(supabase: SupabaseClient, followerId: string
 
 export async function getFollowingFeed(viewerId: string, now = new Date()): Promise<{
   followees: { id: string; username: string }[];
+  categories: string[];
   postings: Posting[];
 }> {
   const supabase = await createClient();
-  const followees = await listFollowees(supabase, viewerId);
+  const [followees, categories] = await Promise.all([
+    listFollowees(supabase, viewerId),
+    listFollowedCategorySlugs(supabase, viewerId),
+  ]);
   const rows = await listPostingRowsByAuthorIds(followees.map((f) => f.id), now);
-  return { followees, postings: buildFollowingFeed(rows, new Set(followees.map((f) => f.id)), now) };
+  const people = buildFollowingFeed(rows, new Set(followees.map((f) => f.id)), now);
+  const inCategories = categories.length > 0 ? await listActivePostings(now) : [];
+  return { followees, categories, postings: mergeCategoryPostings(people, inCategories, new Set(categories), now) };
 }

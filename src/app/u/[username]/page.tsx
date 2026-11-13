@@ -8,6 +8,7 @@ import { getViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isFollowing } from "@/lib/follows";
 import { FollowButton } from "@/components/ui/FollowButton";
+import { EditUsernameForm } from "./EditUsernameForm";
 import { NavyLink } from "@/components/ui/actions";
 import { viewerIsAdmin } from "@/lib/moderationData";
 import { ConnectButton } from "@/components/ui/ConnectButton";
@@ -59,6 +60,7 @@ export default async function ProfilePage({
           </p>
         ) : null}
         <p className="text-ink/70">{isSelf ? "This is your profile." : "Neighbour on CorkBack."}</p>
+        {isSelf && !profile.id.startsWith("seed-") ? <EditUsernameForm current={profile.username} /> : null}
         {showAdminLink ? (
           <p>
             <NavyLink href="/admin" className="font-bold">Admin: reports and moderation</NavyLink>

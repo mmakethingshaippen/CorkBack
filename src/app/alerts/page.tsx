@@ -3,11 +3,13 @@ import { BottomNav } from "@/components/ui/BottomNav";
 import { CorkBand } from "@/components/ui/CorkBand";
 import { AlertsManager } from "./AlertsManager";
 import { getViewer } from "@/lib/auth";
+import { viewerFollowedCategorySlugs } from "@/lib/categoryFollows";
 import { SignInToTakePart } from "@/components/ui/SignInToTakePart";
 
 // Stage 2: radius email alerts, signed-in users only. Public browsing unchanged.
 export default async function AlertsPage() {
   const viewer = await getViewer();
+  const followedCategories = await viewerFollowedCategorySlugs(viewer?.id ?? null);
 
   return (
     <main className="min-h-screen pb-24">
@@ -22,7 +24,7 @@ export default async function AlertsPage() {
         </CorkBand>
       </div>
       <div className="mx-auto max-w-md px-4 pt-6">
-        {viewer ? <AlertsManager /> : <SignInToTakePart action="set up alerts" />}
+        {viewer ? <AlertsManager followedCategories={followedCategories} /> : <SignInToTakePart action="set up alerts" />}
       </div>
       <BottomNav />
     </main>

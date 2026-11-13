@@ -33,3 +33,21 @@ export function buildFollowingFeed(
     .map((r) => r.posting)
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : -1));
 }
+
+/**
+ * Following feed with category follows: people-follow postings plus active
+ * postings in followed categories, de-duplicated by id, newest first.
+ */
+export function mergeCategoryPostings(
+  people: Posting[],
+  active: Posting[],
+  followedSlugs: ReadonlySet<string>,
+  now: Date = new Date(),
+): Posting[] {
+  const byId = new Map<string, Posting>();
+  for (const p of people) byId.set(p.id, p);
+  for (const p of active) {
+    if (followedSlugs.has(p.categorySlug) && isPostingActive(p, now)) byId.set(p.id, byId.get(p.id) ?? p);
+  }
+  return [...byId.values()].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : -1));
+}
