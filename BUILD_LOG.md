@@ -477,3 +477,20 @@ Max approved deploying only the read-only expiry route.
   - **Still PENDING:** the reason filters and the "Posting details" panel were not exercised on production (only in the isolated 27/27 run), and `/admin` has **not** been exercised as an admin on the deployed site corkback.vercel.app (only its signed-out 404 was checked). Neither has been done with an authorized account against the deployed site.
 - **Temporary admin grants:** the grant was revoked by Max and `is_admin()` returned false for the test account before it was deleted. Afterwards no `cbsoc_admin_*` profile or auth user exists, and `admins.user_id` cascades on profile delete. `public.admins` cannot be read with the service key, so Kiro did not enumerate admins. Max ran the admins listing query in the SQL editor afterwards and it returned **no rows**, so no admin grants of any kind existed at that point.
 - **Not done:** granting Max's personal account admin (held on purpose). The [TEST] audit rows stay in `moderation_log`, which is append-only.
+
+## 2026-11-12: Deployed /admin verified as a real admin (supersedes the two "still PENDING" items above)
+- **Grant:** Max granted his own account (`mculbeaux`) in the SQL editor using the `stage8_admin_grant.sql` block. The grant is **kept**; cleanup never touched it. After cleanup his `/admin` still returned 200.
+- **How:** Max signed in himself in an Edge window started with remote debugging and a throwaway profile; Kiro attached over CDP and never saw or stored his password. Target: **https://corkback.vercel.app** (deployment `dpl_3Xe1mqMYXPsfRnFjSBG3wFCDiWso`, `main` at 4e0d934). Test data: three disposable accounts (reporter, poster, non-admin), three `[TEST] Live admin ...` postings, three `[TEST]` reports (spam_scam, inappropriate, misleading). The queue held only those three cards, so no real report was in reach; only cards with a `[TEST] Live admin` title were ever clicked.
+- **Result: 52/52 passed.**
+  - admin session: `/admin` 200 with the Moderation heading, signed in as `mculbeaux`
+  - queue: all three reports listed as Pending
+  - reason filters: Spam or scam, Inappropriate content, Misleading information each show only their own report; Personal information shows none; Any reason restores all three
+  - Posting details: collapsed to open to collapsed, shows title, body and "No moderation history", "View posting" link correct, and after a hide the history shows the hide with its reason
+  - dismiss with a note: leaves Pending, listed as Dismissed under Resolved, posting not hidden
+  - hide: empty reason refused, then hidden; signed-out visitors get 404; the author sees "Hidden by CorkBack moderators" with the reason; report listed as Actioned
+  - restore: empty reason refused, then restored; visible to signed-out visitors again
+  - audit: dismiss, hide and restore entries by `@mculbeaux` with their reasons appear in Recent actions
+  - non-admin denial: three non-admin accounts and a signed-out visitor get 404 at `/admin`, and the three accounts are refused by all five admin functions; the posting was untouched by the probes
+- **Not covered in this run:** "admins cannot edit or delete audit rows through the API" (needs an admin API token, which was not taken from Max's session). It was verified earlier with the disposable admin `cbsoc_admin_b46df9`.
+- **Cleanup:** only the three disposable accounts and their `[TEST]` postings and reports were deleted. Postings and profiles counts and hashes match the pre-test baseline; no leftovers from this run. The older `cbsoc_qa_1110b` account and the "CorkBack feature check" posting predate this work and were left alone. The `[TEST]` audit rows stay in `moderation_log` (append-only).
+- **Checklist status:** queue, filters, Posting details, dismiss, hide, restore, audit entries and non-admin denial are all verified on the deployed site as a real admin.
