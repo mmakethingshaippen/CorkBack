@@ -459,3 +459,21 @@ Max approved deploying only the read-only expiry route.
   - non-admin access to `/admin` and the admin functions refused
   - The 27/27 admin dashboard run was against an **isolated** database, not production.
 - **Not done:** push, merge, production deploy, Phase B.
+
+## 2026-11-12: Stage 8 released, Phase B applied, admin checklist reconciled (`main` at 4e0d934)
+- **Release:** `feature/moderation-ui` was fast-forwarded into `main` (820079a to 4e0d934; no PR, `gh` was not signed in). Vercel's Git integration built production from it (`dpl_3Xe1mqMYXPsfRnFjSBG3wFCDiWso`, aliased to corkback.vercel.app). Smoke test: `/` 200, `/sign-in` 200, `/admin` signed out 404, bogus posting 404, cron without secret 401. The protected preview (c5upfb720) was never tested directly.
+- **Phase B** (`stage8b_promotion_lockdown.sql`) was run by Max after the deploy; its check returned false / true / true.
+- **Promotion on the live site after Phase B** (23/23; disposable owner + non-owner, one [TEST] posting, real Edge against corkback.vercel.app):
+  - Promote and Remove promotion both work through the UI and persist after a refresh; the public Promoted label appears and disappears with it.
+  - Direct client `UPDATE` of `is_promoted` is refused (42501 permission denied), alone and mixed with an allowed column, for the owner and for anonymous clients. Owner content edits still work.
+  - `set_posting_promoted` and the API route refuse a non-owner and an anonymous caller. Cleanup matched the baseline counts and hashes.
+- **Admin checklist, reconciled with evidence.** Tested on **2026-11-12 about 18:15 UTC**, with a real Edge browser driven against a **local production build of `feature/moderation-ui` (81d9942) connected to the live production database**, using the disposable account `cbsoc_admin_b46df9` that Max granted and revoked in the SQL editor:
+  - queue: pending and Resolved tabs list the reports; DONE
+  - dismiss a report; DONE
+  - hide a posting (empty reason refused; hidden from the public; the author sees the notice and reason); DONE
+  - restore a posting (empty reason refused; flag cleared); DONE
+  - audit entries for dismiss, hide and restore with the admin username and reasons, shown on the page and returned by `admin_moderation_log`; admins cannot edit or delete log rows through the API; DONE
+  - non-admin refusal: signed-out visitors and three non-admin accounts get 404 at `/admin` and are refused by all five admin functions and by direct reads of `moderation_log` and `admins`; DONE
+  - **Still PENDING:** the reason filters and the "Posting details" panel were not exercised on production (only in the isolated 27/27 run), and `/admin` has **not** been exercised as an admin on the deployed site corkback.vercel.app (only its signed-out 404 was checked). Neither has been done with an authorized account against the deployed site.
+- **Temporary admin grants:** the grant was revoked by Max and `is_admin()` returned false for the test account before it was deleted. Afterwards no `cbsoc_admin_*` profile or auth user exists, and `admins.user_id` cascades on profile delete. `public.admins` cannot be read with the service key, so Kiro did not enumerate admins. Max ran the admins listing query in the SQL editor afterwards and it returned **no rows**, so no admin grants of any kind existed at that point.
+- **Not done:** granting Max's personal account admin (held on purpose). The [TEST] audit rows stay in `moderation_log`, which is append-only.
