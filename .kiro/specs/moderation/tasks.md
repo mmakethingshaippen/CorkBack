@@ -32,7 +32,7 @@ Release order and gates: design.md §11. Do not apply production SQL, push, depl
 ## 4. Verification and release
 - [x] 4.1 typecheck, lint, unit tests (188), production build (outside OneDrive).
 - [x] 4.2 REST/RLS suite with real JWTs against production phase A: 24/24.
-- [~] 4.3 Browser suites on production phase A, local production build: non-admin roles done (reporting 24/24, owner/promote/Like 27/27, replies 21/21, hidden surfaces and social regression 22/22, Stage 4 messaging 75/75, cards 25/25, layout 0 overlaps). **Admin role on production: waiting for Max to grant the temporary admin.**
-- [~] 4.4 Cleanup: done for everything except the disposable admin account and the kept `[TEST]` audit rows (none new from this run). Final cleanup after the admin run.
+- [x] 4.3 Browser suites on production phase A, local production build: non-admin roles done (reporting 24/24, owner/promote/Like 27/27, replies 21/21, hidden surfaces and social regression 22/22, Stage 4 messaging 75/75, cards 25/25, layout 0 overlaps). **Admin role on production done 2026-11-12:** queue, reason filters, Posting details, dismiss, hide, restore, audit entries and non-admin denial; 52/52 as `mculbeaux` on corkback.vercel.app (BUILD_LOG).
+- [x] 4.4 Cleanup done after every run: disposable accounts and `[TEST]` content removed, counts and hashes at baseline. The `[TEST]` audit rows stay (append-only) and the `mculbeaux` admin grant is kept on purpose.
 - [ ] 4.5 Logs; commit on the new branch (done locally, not pushed); protected preview. **Stop for approval** before push/merge.
 - [ ] 4.6 After production deploy: **Max** applies phase B (`stage8b_promotion_lockdown.sql`); production smoke.
