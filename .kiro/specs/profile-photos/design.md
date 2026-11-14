@@ -114,6 +114,9 @@ Rendering call sites (from a search of `PosterHandle`): `PostingCard`, `p/[id]/p
 - Client prechecks use the same `precheckFile` as the server and show specific messages before any network call.
 - Upload through `XMLHttpRequest` so `upload.onprogress` drives a `<progress>`-style bar. A ref lock plus `disabled` blocks second submissions. On 200 it shows "Photo updated", then calls `router.refresh()`. The pages read per request, so `revalidatePath` is not needed.
 - A polite `aria-live` region carries "Uploading 40%", success and errors (errors use `role="alert"`). The current photo stays displayed through any failure.
+- Crop step (added): choosing a valid file opens an inline `AvatarCropper` (circular preview of exactly what will be shown, drag or arrow keys to move, labelled range input to zoom, "Save photo" / "Cancel"). Nothing is sent until Save. The crop is expressed as fractions of the ORIENTED image (`x`, `y` = top-left as fractions of width and height; `size` = side as a fraction of the shorter side), computed in `src/lib/avatars/crop.ts` (pure, shared). The browser's `<img>` applies EXIF orientation, matching sharp's `rotate()`.
+- The original bytes (not a canvas export) are uploaded with a `crop` form field. The server re-validates, clamps the crop, runs `rotate()` then `extract()` then `resize(512, 512, { fit: "inside", withoutEnlargement: true })`, so the stored image is always a uniform-scale square. No crop field means the centred largest square.
+- "Cancel upload" calls `xhr.abort()`; timeout (60 s) and network errors keep the current photo.
 - Remove asks for an inline confirm ("Remove your photo? This can't be undone.") with Cancel; the confirming button is navy outline, not dark red.
 
 ### Error codes
@@ -342,7 +345,7 @@ For any user UUID and file UUID, `parseAvatarPath(buildAvatarPath(u, f))` return
 
 ### Property 4: Processed output invariants
 
-For any generated valid JPEG, PNG or WebP of valid dimensions (including EXIF orientation values 1 to 8), `processAvatar` returns WebP with no EXIF, ICC or XMP metadata, both dimensions at most 512, the aspect ratio of the oriented input preserved within one pixel of rounding, no upscaling of images already within 512, and a size no greater than 2 MiB; processing the output again leaves the dimensions unchanged.
+For any generated valid JPEG, PNG or WebP of valid dimensions (including EXIF orientation values 1 to 8), `processAvatar` returns WebP with no EXIF, ICC or XMP metadata, square output with both dimensions at most 512 (for any crop, valid or out of range, which is clamped inside the image), no upscaling of a square already within 512, the crop region uniformly scaled (never stretched), and a size no greater than 2 MiB; processing the output again leaves the dimensions unchanged.
 
 **Validates: Requirements 3.1, 3.3, 3.4, 3.5, 3.7**
 

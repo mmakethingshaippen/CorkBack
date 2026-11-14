@@ -2,6 +2,7 @@ import "server-only";
 import sharp from "sharp";
 import { MAX_FILE_BYTES, MAX_INPUT_PIXELS, OUTPUT_SIZE, WEBP_QUALITY } from "./constants";
 import type { AvatarErrorCode } from "./errors";
+import { cropToPixels, type CropRect } from "./crop";
 import { checkDimensions } from "./validate";
 
 export type ProcessResult =
@@ -22,7 +23,7 @@ const ACCEPTED = new Set(["jpeg", "png", "webp"]);
  *   never stretched or enlarged), WebP. No metadata is copied, so EXIF
  *   (including GPS), XMP and ICC are dropped.
  */
-export async function processAvatar(input: Buffer): Promise<ProcessResult> {
+export async function processAvatar(input: Buffer, crop?: CropRect | null): Promise<ProcessResult> {
   if (input.length === 0) return { ok: false, code: "no_file" };
   if (input.length > MAX_FILE_BYTES) return { ok: false, code: "too_large" };
 
@@ -40,10 +41,16 @@ export async function processAvatar(input: Buffer): Promise<ProcessResult> {
   // For multi-frame input, `height` here is one frame (animated: false).
   const dim = checkDimensions(meta.width ?? 0, meta.pageHeight ?? meta.height ?? 0);
   if (dim) return { ok: false, code: dim };
+  // Crop coordinates refer to the ORIENTED image (EXIF orientation 5 to 8 swaps the axes).
+  const w0 = meta.width ?? 0;
+  const h0 = meta.pageHeight ?? meta.height ?? 0;
+  const swap = (meta.orientation ?? 1) >= 5;
+  const box = cropToPixels(crop, swap ? h0 : w0, swap ? w0 : h0);
 
   try {
     const { data, info } = await sharp(input, opts)
-      .rotate()
+      .rotate() // orientation first, so the crop box is in the oriented image
+      .extract({ left: box.left, top: box.top, width: box.side, height: box.side })
       .resize(OUTPUT_SIZE, OUTPUT_SIZE, { fit: "inside", withoutEnlargement: true })
       .webp({ quality: WEBP_QUALITY })
       .toBuffer({ resolveWithObject: true });

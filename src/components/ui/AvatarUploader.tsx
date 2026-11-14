@@ -2,7 +2,9 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { NavyLink } from "./actions";
+import { AvatarCropper } from "./AvatarCropper";
 import { ALLOWED_TYPES } from "@/lib/avatars/constants";
+import type { CropRect } from "@/lib/avatars/crop";
 import { AVATAR_ERRORS, avatarErrorMessage } from "@/lib/avatars/errors";
 import { precheckFile } from "@/lib/avatars/validate";
 
@@ -30,7 +32,10 @@ export function AvatarUploader({ hasPhoto }: { hasPhoto: boolean }) {
   const lock = useRef(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [picked, setPicked] = useState<File | null>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
   const busy = status.kind === "uploading" || status.kind === "processing" || status.kind === "removing";
+  const sending = status.kind === "uploading" || status.kind === "processing";
 
   function pick() {
     if (lock.current) return;
@@ -43,26 +48,46 @@ export function AvatarUploader({ hasPhoto }: { hasPhoto: boolean }) {
     e.target.value = ""; // choosing the same file again still fires change
     if (!file || lock.current) return;
     const pre = precheckFile(file);
-    if (pre) return setStatus({ kind: "error", text: AVATAR_ERRORS[pre].message });
-    upload(file);
+    if (pre) {
+      setPicked(null);
+      return setStatus({ kind: "error", text: AVATAR_ERRORS[pre].message });
+    }
+    setStatus({ kind: "idle" });
+    setPicked(file); // preview and crop first; nothing is sent yet
   }
 
-  function upload(file: File) {
+  function upload(file: File, crop: CropRect) {
+    if (lock.current) return;
     lock.current = true;
     setStatus({ kind: "uploading", percent: 0 });
     const form = new FormData();
     form.set("file", file);
+    form.set("crop", JSON.stringify(crop));
     const xhr = new XMLHttpRequest();
+    xhrRef.current = xhr;
     xhr.open("POST", "/api/profile/avatar");
     xhr.responseType = "json";
+    xhr.timeout = 60_000;
     xhr.upload.onprogress = (ev) => {
       setStatus({ kind: "uploading", percent: ev.lengthComputable ? Math.round((ev.loaded / ev.total) * 100) : null });
     };
     xhr.upload.onload = () => setStatus({ kind: "processing" });
+    xhr.onabort = () => {
+      lock.current = false;
+      xhrRef.current = null;
+      setStatus({ kind: "error", text: "Upload cancelled. Your current photo was not changed." });
+    };
+    xhr.ontimeout = () => {
+      lock.current = false;
+      xhrRef.current = null;
+      setStatus({ kind: "error", text: "The upload took too long. Your current photo was not changed. Please try again." });
+    };
     xhr.onload = () => {
       lock.current = false;
+      xhrRef.current = null;
       const body = (xhr.response ?? {}) as { ok?: boolean; code?: string; message?: string };
       if (xhr.status >= 200 && xhr.status < 300 && body.ok) {
+        setPicked(null);
         setStatus({ kind: "done", text: "Your photo is saved." });
         router.refresh();
         return;
@@ -71,6 +96,7 @@ export function AvatarUploader({ hasPhoto }: { hasPhoto: boolean }) {
     };
     xhr.onerror = () => {
       lock.current = false;
+      xhrRef.current = null;
       setStatus({ kind: "error", text: "Couldn't reach CorkBack. Check your connection and try again. Your current photo was not changed." });
     };
     xhr.send(form);
@@ -109,16 +135,34 @@ export function AvatarUploader({ hasPhoto }: { hasPhoto: boolean }) {
         aria-hidden="true"
       />
       <div className="flex flex-wrap gap-3">
-        <button type="button" onClick={pick} disabled={busy} aria-describedby="avatar-hint" className={control}>
-          {status.kind === "uploading" || status.kind === "processing" ? "Uploading…" : hasPhoto ? "Change profile photo" : "Add profile photo"}
+        <button type="button" onClick={pick} disabled={busy || picked !== null} aria-describedby="avatar-hint" className={control}>
+          {sending ? "Uploading…" : hasPhoto ? "Change profile photo" : "Add profile photo"}
         </button>
-        {hasPhoto && !confirmRemove ? (
+        {sending ? (
+          <button type="button" onClick={() => xhrRef.current?.abort()} className={control}>
+            Cancel upload
+          </button>
+        ) : null}
+        {hasPhoto && !confirmRemove && picked === null ? (
           <button type="button" onClick={() => { setConfirmRemove(true); setStatus({ kind: "idle" }); }} disabled={busy} className={control}>
             Remove photo
           </button>
         ) : null}
       </div>
       <p id="avatar-hint" className="text-xs text-ink/60">JPEG, PNG or WebP, up to 2 MB. Location data in the photo is removed.</p>
+
+      {picked ? (
+        <AvatarCropper
+          file={picked}
+          disabled={busy}
+          onSave={(crop) => upload(picked, crop)}
+          onCancel={() => { setPicked(null); setStatus({ kind: "idle" }); }}
+          onUnreadable={() => {
+            setPicked(null);
+            setStatus({ kind: "error", text: AVATAR_ERRORS.not_an_image.message });
+          }}
+        />
+      ) : null}
 
       {confirmRemove ? (
         <div role="group" aria-label="Remove your photo" className="flex flex-wrap items-center gap-3 rounded-card border border-board bg-white p-3">

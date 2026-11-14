@@ -219,3 +219,24 @@ describe("route examples", () => {
     expect((await DELETE()).status).toBe(503);
   });
 });
+
+describe("crop field", () => {
+  it("accepts a valid crop and a missing crop", async () => {
+    expect((await req({ extra: { crop: JSON.stringify({ x: 0.2, y: 0, size: 0.8 }) } })).status).toBe(200);
+    expect((await req()).status).toBe(200);
+  });
+
+  it("rejects a malformed crop with 400 before touching the database or Storage", async () => {
+    for (const crop of ["not json", '{"x":"a","y":0,"size":1}', '{"x":0,"y":0,"size":0}', "[1,2,3]"]) {
+      calls = [];
+      const res = await req({ extra: { crop } });
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe("invalid_crop");
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("clamps an out-of-range crop instead of failing", async () => {
+    expect((await req({ extra: { crop: JSON.stringify({ x: 99, y: -99, size: 99 }) } })).status).toBe(200);
+  });
+});

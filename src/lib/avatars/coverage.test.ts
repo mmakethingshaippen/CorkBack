@@ -67,3 +67,40 @@ describe("lookupAvatarPaths", () => {
     expect(await lookupAvatarPaths(bad as never, ["a_b"])).toEqual({});
   });
 });
+
+/**
+ * No DOM test environment in this project, so the owner control's contract is
+ * pinned from its source. Behaviour (preview, crop, cancel, errors) is checked
+ * in a real browser in the live verification step.
+ */
+describe("AvatarUploader contract", () => {
+  const up = read("src/components/ui/AvatarUploader.tsx");
+  it("shows both labels and Remove only with a photo", () => {
+    expect(up).toContain("Add profile photo");
+    expect(up).toContain("Change profile photo");
+    expect(up).toMatch(/hasPhoto && !confirmRemove/);
+  });
+  it("prechecks the file, then previews and crops before anything is sent", () => {
+    expect(up).toContain("precheckFile(file)");
+    expect(up).toContain("setPicked(file)");
+    expect(up).toContain("<AvatarCropper");
+    expect(up).toContain('form.set("crop"');
+    // upload() is only reachable from the cropper's Save, never from the file input handler.
+    const onFile = up.slice(up.indexOf("function onFile"), up.indexOf("function upload"));
+    expect(onFile).not.toContain("upload(");
+  });
+  it("can cancel, time out, and ignores a second submit while busy", () => {
+    expect(up).toContain("xhrRef.current?.abort()");
+    expect(up).toContain("xhr.timeout");
+    expect(up).toContain("if (lock.current) return;");
+  });
+  it("adds no dark-red action", () => {
+    expect(up).not.toContain("bg-dark-red");
+    expect(read("src/components/ui/AvatarCropper.tsx")).not.toContain("bg-dark-red");
+  });
+  it("the profile page renders the uploader only for the owner", () => {
+    const page = read("src/app/u/[username]/page.tsx");
+    expect(page).toMatch(/canEditPhoto \? <AvatarUploader/);
+    expect(page).toMatch(/canEditPhoto\s*=\s*canManageAvatar|canManageAvatar\(/);
+  });
+});

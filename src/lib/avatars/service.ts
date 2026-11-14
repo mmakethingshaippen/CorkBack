@@ -1,5 +1,6 @@
 import "server-only";
 import { RATE_RETRY_AFTER_SECONDS } from "./constants";
+import type { CropRect } from "./crop";
 import { AVATAR_ERRORS, type AvatarErrorCode } from "./errors";
 import { selectOrphans, type StoredObject } from "./orphans";
 import { buildAvatarPath, parseAvatarPath } from "./path";
@@ -20,7 +21,7 @@ export type AvatarDeps = {
   upload: (path: string, data: Buffer, opts: { contentType: string; cacheControl: string; upsert: boolean }) => Promise<{ error: DbError }>;
   remove: (paths: string[]) => Promise<{ error: DbError }>;
   list: (folder: string) => Promise<{ data: StoredObject[] | null; error: DbError }>;
-  process: (input: Buffer) => Promise<ProcessResult>;
+  process: (input: Buffer, crop?: CropRect | null) => Promise<ProcessResult>;
   newId: () => string;
   now: () => number;
   log?: (msg: string, meta: Record<string, unknown>) => void;
@@ -47,7 +48,7 @@ function fail(code: AvatarErrorCode, headers?: Record<string, string>): AvatarRe
  * previous object and sweep stale files. If anything fails after the upload,
  * the new object is removed and the current photo is untouched.
  */
-export async function uploadAvatar(deps: AvatarDeps, userId: string | null, file: File | null): Promise<AvatarResult> {
+export async function uploadAvatar(deps: AvatarDeps, userId: string | null, file: File | null, crop: CropRect | null = null): Promise<AvatarResult> {
   const log = deps.log ?? (() => {});
   if (!userId) return fail("signed_out");
   const pre = precheckFile(file);
@@ -66,7 +67,7 @@ export async function uploadAvatar(deps: AvatarDeps, userId: string | null, file
   } catch {
     return fail("not_an_image");
   }
-  const processed = await deps.process(input);
+  const processed = await deps.process(input, crop);
   if (!processed.ok) return fail(processed.code);
 
   const path = buildAvatarPath(userId, deps.newId());

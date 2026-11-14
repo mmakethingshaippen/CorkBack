@@ -186,6 +186,48 @@ try {
   await expectError("after rollback avatar_path is still unwritable", () => as(db, "authenticated", A, "update public.profiles set avatar_path = null where id = $1", [A]), "42501");
   await expectOk("cb_set_avatar survives the 10b rollback", () => db.query("select to_regprocedure('public.cb_set_avatar(uuid,text)') as f"), (r) => r.rows[0].f !== null);
   await expectOk("stage10b re-applies after rollback", () => db.query(read("stage10b_avatar_clear_and_rate_limit.sql")));
+
+  // Review files: preflight (read-only), verify (self-rolling-back), stage 10 rollback.
+  const snapshot = async () => (await db.query(`select (select count(*) from public.profiles) p, (select count(*) from auth.users) u,
+    (select count(*) from storage.objects) o, (select count(*) from public.avatar_uploads) l,
+    (select coalesce(string_agg(avatar_path, ','), '') from public.profiles) a`)).rows[0];
+  const last = (r) => (Array.isArray(r) ? r[r.length - 1] : r);
+  const snap0 = await snapshot();
+  await expectOk("stage10 preflight runs and reports the bucket", async () => last(await db.query(read("stage10_avatars_preflight.sql"))), (r) => r.rows.length === 1 || r.rows.length > 5);
+  await expectOk("stage10b preflight runs", () => db.query(read("stage10b_avatar_clear_and_rate_limit_preflight.sql")));
+  await expectOk("stage10 verify passes", async () => last(await db.query(read("stage10_avatars_verify.sql"))), () => true);
+  await expectOk("stage10 verify reports success", async () => {
+    const res = await db.query(read("stage10_avatars_verify.sql"));
+    return res.flatMap((x) => x.rows).map((r) => r.result).filter(Boolean);
+  }, (v) => v.includes("stage10 verify: all checks passed"));
+  await expectOk("stage10b verify passes", () => db.query(read("stage10b_avatar_clear_and_rate_limit_verify.sql")));
+  const snap1 = await snapshot();
+  JSON.stringify(snap0) === JSON.stringify(snap1) ? ok("verify and preflight changed no data") : bad("verify/preflight left data behind", `${JSON.stringify(snap0)} vs ${JSON.stringify(snap1)}`);
+
+  // verify must FAIL when a protection is missing (mutation checks).
+  await db.query("grant update (avatar_path) on public.profiles to authenticated");
+  await expectError("stage10 verify catches a client-writable avatar_path", () => db.query(read("stage10_avatars_verify.sql")), "P0001");
+  await db.query("rollback").catch(() => {});
+  await db.query("revoke update (avatar_path) on public.profiles from authenticated");
+  await db.query(`drop policy "avatars no client delete" on storage.objects`);
+  await expectError("stage10 verify catches a missing restrictive policy", () => db.query(read("stage10_avatars_verify.sql")), "P0001");
+  await db.query("rollback").catch(() => {});
+  await db.query(`create policy "avatars no client delete" on storage.objects as restrictive for delete to anon, authenticated using (bucket_id <> 'avatars')`);
+  await expectOk("stage10 verify passes again after restoring", async () => (await db.query(read("stage10_avatars_verify.sql"))).flatMap((x) => x.rows).map((r) => r.result).filter(Boolean), (v) => v.length === 1);
+
+  // Stage 10 rollback: 10b rollback first, then this one. Protections and data stay.
+  const withPhoto = `${D}/${randomUUID()}.webp`;
+  await putObject(withPhoto, { mimetype: "image/webp", size: 99 });
+  await db.query("select public.cb_set_avatar($1, $2)", [D, withPhoto]);
+  await expectOk("stage10b rollback applies (before stage 10)", () => db.query(read("stage10b_avatar_clear_and_rate_limit_rollback.sql")));
+  await expectOk("stage10 rollback applies", () => db.query(read("stage10_avatars_rollback.sql")));
+  await expectOk("stage10 rollback dropped only cb_set_avatar", () => db.query("select to_regprocedure('public.cb_set_avatar(uuid,text)') as f, (select count(*) from pg_policies where tablename='objects' and policyname like 'avatars no client %')::int as pol"), (r) => r.rows[0].f === null && r.rows[0].pol === 3);
+  await expectOk("stage10 rollback kept stored photos", () => db.query("select avatar_path from public.profiles where id = $1", [D]), (r) => r.rows[0].avatar_path === withPhoto);
+  await expectError("after stage 10 rollback avatar_path is still unwritable", () => as(db, "authenticated", D, "update public.profiles set avatar_path = null where id = $1", [D]), "42501");
+  await expectError("after stage 10 rollback clients still cannot write the bucket", () => as(db, "authenticated", D, "insert into storage.objects (bucket_id, name) values ('avatars', $1)", [`${D}/${randomUUID()}.webp`]), "42501");
+  await expectOk("stage10 re-applies after rollback", () => db.query(read("stage10_avatars.sql")));
+  await expectOk("stage10b re-applies after both rollbacks", () => db.query(read("stage10b_avatar_clear_and_rate_limit.sql")));
+  await expectOk("stage10 verify passes after re-apply", async () => (await db.query(read("stage10_avatars_verify.sql"))).flatMap((x) => x.rows).map((r) => r.result).filter(Boolean), (v) => v.length === 1);
   await db.end();
   await new Promise((r) => setTimeout(r, 200));
 } catch (e) {

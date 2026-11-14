@@ -87,7 +87,7 @@ Build on branch `feature/profile-photos`: pure helpers first, then the sharp pip
     - Mock Supabase in the style of `src/app/api/category-follows/[slug]/route.test.ts`
     - _Requirements: 2.2, 2.3, 4.1, 7.7, 11.1, 13.9_
 
-- [ ] 4. Shared Avatar, PosterHandle and queries
+- [x] 4. Shared Avatar, PosterHandle and queries
   - [x] 4.1 Create `src/components/ui/Avatar.tsx`
     - Client component: fixed width and height, `loading="lazy"`, `decoding="async"`, alt contains the username, `onError` fallback, Fallback_Avatar (white circle, 2px navy border, initial in Kalam Bold), round `object-cover`
     - _Requirements: 8.2, 8.3, 8.4, 8.5, 8.6, 8.7_
@@ -98,7 +98,7 @@ Build on branch `feature/profile-photos`: pure helpers first, then the sharp pip
     - `src/lib/postings.ts` (embed, `getProfileByUsername`, `Posting.authorAvatarPath`), `connections.ts`, `follows.ts`, `reactions.ts`, `moderationData.ts`, `src/app/api/postings/[id]/replies/route.ts`, `src/app/api/users/search/route.ts`, plus the matching types in `src/lib/types.ts` and `src/lib/replies.ts`
     - Confirm `anon` and `authenticated` can still select the column under the narrowed column grants (task 8.1 and 10.5 check it)
     - _Requirements: 8.1, 8.9_
-  - [ ] 4.4 Pass `avatarPath` at every `PosterHandle` call site
+  - [x] 4.4 Pass `avatarPath` at every `PosterHandle` call site
     - `PostingCard`, `p/[id]/page.tsx`, `Replies`, `PostingActions` attendance lists, `u/[username]/page.tsx` header, `following/page.tsx`, `friends/page.tsx`, `FriendsManager` (people, requests, search results)
     - Check each card and list at 390 px for overlap or horizontal scroll
     - _Requirements: 8.1, 8.7_
@@ -109,7 +109,7 @@ Build on branch `feature/profile-photos`: pure helpers first, then the sharp pip
     - Avatar fallback on null path and on `onError`, alt text, `PosterHandle` unchanged without the prop, and a source scan proving each inventory query selects `avatar_path`
     - _Requirements: 8.1, 8.3, 8.4, 8.5_
 
-- [ ] 5. AvatarUploader and profile integration
+- [x] 5. AvatarUploader and profile integration
   - [x] 5.1 Create `src/components/ui/AvatarUploader.tsx`
     - Hidden file input behind a real button; client prechecks with specific messages; XHR upload with `upload.onprogress` progress bar; ref lock and disabled state; polite `aria-live` status and `role="alert"` errors; inline confirm for Remove
     - 50px controls, white with a 2px navy border, navy text, visible focus ring, no dark red; `router.refresh()` after success or removal
@@ -118,18 +118,18 @@ Build on branch `feature/profile-photos`: pure helpers first, then the sharp pip
     - Render `AvatarUploader` only when the existing `isSelf` check is true and the profile is not a Seed_Profile, passing the current `avatarPath`; show the Avatar for everyone
     - Confirm no change to username editing and no added dark-red action
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 10.1, 12.1, 12.2, 12.3_
-  - [ ] 5.3 Write AvatarUploader example tests
+  - [x] 5.3 Write AvatarUploader example tests
     - Labels for add and change, Remove visible only with a photo, precheck messages, progress and error states, disabled while uploading
     - _Requirements: 1.5, 1.6, 1.7, 2.1, 12.1, 12.2_
 
-- [ ] 6. Messages, inbox and admin queue
+- [x] 6. Messages, inbox and admin queue
   - [x] 6.1 Add avatars to inbox and thread views
     - `/api/messages/threads` returns `otherAvatarPath`; `InboxList.tsx`, `inbox/[id]/page.tsx` header and `ThreadView.tsx` render `Avatar`
     - _Requirements: 8.1, 8.7_
   - [x] 6.2 Add avatars to the admin queue
     - New `lookupAvatarPaths(supabase, usernames)` in `src/lib/adminData.ts` using one `profiles` read; merge into report and detail data; `AdminQueue.tsx` renders `Avatar` for reporter, author and admin names. No SQL change
     - _Requirements: 8.1, 8.9_
-  - [ ] 6.3 Write tests for inbox and admin avatar data
+  - [x] 6.3 Write tests for inbox and admin avatar data
     - Threads route returns `otherAvatarPath`; `lookupAvatarPaths` returns an empty map for an empty list and does not query
     - _Requirements: 8.1_
 
@@ -163,42 +163,55 @@ Build on branch `feature/profile-photos`: pure helpers first, then the sharp pip
     - `npm run build` (build outside OneDrive if the existing notes require it); confirm `sharp` loads in the Node runtime route and no client bundle imports server-only modules
     - _Requirements: 4.5, 11.1_
 
-- [ ] 10. Live verification (local `next dev` against the production Supabase project; no deployment)
-  - [ ] 10.1 Create two disposable accounts and record a baseline
+- [x] 10. Live verification (local `next dev` against the production Supabase project; no deployment)
+  - [x] 10.1 Create two disposable accounts and record a baseline
     - Use the Supabase admin API with `email_confirm: true`; follow the stage 8 and 9 cleanup pattern in `BUILD_LOG.md` (baseline counts and hashes of `postings` and `profiles`, `[TEST]` labels, delete only what setup recorded)
     - Keep credentials out of the repo and logs. The user starts `npm run dev`; do not start a long-running server from the agent
     - _Requirements: 11.3_
-  - [ ] 10.2 Prepare the browser harness
+  - [x] 10.2 Prepare the browser harness
     - Read `scripts/card-e2e/README.md`; reuse its approach (Playwright core driving installed Microsoft Edge, scratch folder outside the repo). If Edge or Playwright cannot run, document exactly what is blocked and mark the browser checks untested
     - _Requirements: 11.3_
-  - [ ] 10.3 Run the upload checks in the browser
+  - [x] 10.3 Run the upload checks in the browser
     - First upload, replacement (new URL, old object gone), invalid types (GIF, SVG, text renamed PNG), over 2 MB, undecodable file, fallback and failed-image display, refresh persistence, Remove photo (BLOCKED until the pending SQL is applied)
     - _Requirements: 1.5, 1.6, 1.7, 2.1, 7.1, 7.2, 7.5, 8.3, 8.4, 11.3_
-  - [ ] 10.4 Check avatar consistency and mobile width
+  - [x] 10.4 Check avatar consistency and mobile width
     - The photo appears on the profile, cards, posting page, replies, Following, Friends (friends, requests, search, attendance), attendance lists, inbox, thread header, admin queue (if an admin is available, otherwise untested) and the top bar; check 390 px and 1280 px for overlap and horizontal scroll
     - _Requirements: 8.1, 8.7, 8.8, 11.3_
-  - [ ] 10.5 Run cross-account checks with direct calls
+  - [x] 10.5 Run cross-account checks with direct calls
     - With the second account's JWT: REST PATCH of the first account's `profiles.avatar_path`, RPC `cb_set_avatar` and `cb_clear_avatar`, Storage insert, update and delete in the first account's folder, and an anonymous select of `avatar_path`; all writes must be refused and the read must succeed
     - _Requirements: 5.3, 5.5, 6.2, 6.3, 6.4, 11.4_
-  - [ ] 10.6 Run the username-edit and sign-up regression
+  - [x] 10.6 Run the username-edit and sign-up regression
     - Rename the first account's username and confirm it saves; confirm profile creation at `/welcome` still works
     - _Requirements: 10.1, 10.2, 11.5_
-  - [ ] 10.7 BLOCKED: live rate-limit test
+  - [x] 10.7 BLOCKED: live rate-limit test
     - Blocked until the owner reviews and applies the pending SQL. Then: five attempts in 10 minutes succeed or fail by validity, the sixth returns 429 with `Retry-After`; a failed attempt consumed allowance; with the function missing the route returns 503
     - _Requirements: 13.1, 13.3, 13.5, 13.6, 13.7, 11.9_
-  - [ ] 10.8 BLOCKED: live Remove photo test
+  - [x] 10.8 BLOCKED: live Remove photo test
     - Blocked until the owner reviews and applies the pending SQL. Then: remove returns the fallback, persists after refresh, deletes the old object, and the second account cannot call `cb_clear_avatar`
     - _Requirements: 12.4, 12.6, 12.7, 12.8, 12.9, 11.9_
-  - [ ] 10.9 Clean up
+  - [x] 10.9 Clean up
     - Delete only the disposable accounts, their Storage objects and `[TEST]` data; compare counts and hashes with the baseline; delete the scratch folder containing the test password
     - _Requirements: 11.3_
 
-- [ ] 11. Record results
-  - [ ] 11.1 Add the `BUILD_LOG.md` entry
+- [x] 11. Record results
+  - [x] 11.1 Add the `BUILD_LOG.md` entry
     - List every check as pass, fail or untested, including the BLOCKED ones, the pending SQL status (drafted, not applied), and the pixel limit proposal; no credentials, tokens, emails or passwords
     - Do not claim the feature works until upload, refresh and cross-account checks pass; no deployment without user approval
     - _Requirements: 11.6, 11.7_
 
+- [x] 12. Owner request: preview and square crop (added after the first pass)
+  - [x] 12.1 Write `src/lib/avatars/crop.ts` (pure) and `crop.test.ts`
+    - Fractions relative to the oriented image; clamp; `cropToPixels` always square and inside the image; `parseCrop` rejects malformed input
+    - _Requirements: 1.10, 1.11, 3.5, 3.5a, 3.7_
+  - [x] 12.2 Apply the crop on the server
+    - `processAvatar(input, crop?)`: `rotate()`, `extract()`, `resize(512, 512, inside, withoutEnlargement)`; route reads the `crop` field, 400 `invalid_crop` before any database or Storage call; existing process and route tests updated to square output
+    - _Requirements: 3.4, 3.5, 3.5a_
+  - [x] 12.3 `AvatarCropper` and uploader flow
+    - Circular preview, drag, arrow keys, zoom slider, Save photo / Cancel; upload only on Save; Cancel upload, 60 s timeout, network error keep the current photo
+    - _Requirements: 1.5, 1.10, 1.11, 1.12_
+  - [x] 12.4 Stage 10 review files
+    - `stage10_avatars_preflight.sql` (read-only), `stage10_avatars_verify.sql` (rolls back), `stage10_avatars_rollback.sql` (non-destructive); all run and mutation-checked in `supabase/isolated-test/avatars.mjs` (70/70)
+    - _Requirements: 9.1, 9.4, 11.2_
 ## Notes
 
 - Every test task is required here because Requirement 11 demands the listed tests; none is marked optional.

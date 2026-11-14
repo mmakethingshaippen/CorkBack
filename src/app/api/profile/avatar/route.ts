@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { BUCKET, MAX_FILE_BYTES, MULTIPART_OVERHEAD_BYTES } from "@/lib/avatars/constants";
 import { AVATAR_ERRORS, type AvatarErrorCode } from "@/lib/avatars/errors";
+import { parseCrop } from "@/lib/avatars/crop";
 import { processAvatar } from "@/lib/avatars/process";
 import { removeAvatar, uploadAvatar, type AvatarDeps, type AvatarResult } from "@/lib/avatars/service";
 
@@ -72,14 +73,18 @@ export async function POST(req: Request) {
   if (Number.isFinite(declared) && declared > MAX_FILE_BYTES + MULTIPART_OVERHEAD_BYTES) return fail("too_large");
 
   let file: File | null = null;
+  let rawCrop: FormDataEntryValue | null = null;
   try {
     const form = await req.formData();
     const f = form.get("file");
     file = f instanceof File ? f : null;
+    rawCrop = form.get("crop");
   } catch {
     return fail("no_file");
   }
-  return respond(await uploadAvatar(deps(), userId, file));
+  const crop = parseCrop(rawCrop);
+  if (crop === "invalid") return fail("invalid_crop");
+  return respond(await uploadAvatar(deps(), userId, file, crop));
 }
 
 export async function DELETE() {

@@ -6,7 +6,7 @@ Profile photos let each CorkBack user add, change or remove one photo on their o
 
 Two database additions (`cb_clear_avatar`, and the `avatar_uploads` ledger with `cb_avatar_rate_check`) are drafted in this spec and are NOT applied. They require user review before anyone applies them.
 
-The theme, design tokens, Kalam typography, the account model (username is the only public name, email stays private), username editing, the password-reset flow, and all existing accounts, postings, replies, threads and messages are preserved. Out of scope: cropping or editing tools, GIF or animated avatars, admin changes to other users' photos, social-login avatars, and photo moderation (a possible follow-up only).
+The theme, design tokens, Kalam typography, the account model (username is the only public name, email stays private), username editing, the password-reset flow, and all existing accounts, postings, replies, threads and messages are preserved. The owner previews the chosen photo and picks a square crop (drag and zoom, proportions never stretched) before uploading; the stored photo is always square and is displayed as a circle. Out of scope: filters and other editing tools, GIF or animated avatars, admin changes to other users' photos, social-login avatars, and photo moderation (a possible follow-up only).
 
 EARS phrasing. Roles: **owner** (the signed-in user viewing their own profile), **other user** (signed in, viewing someone else's profile), **admin** (an other user with moderation access), **signed-out visitor**.
 
@@ -55,6 +55,10 @@ EARS phrasing. Roles: **owner** (the signed-in user viewing their own profile), 
 8. THE Photo_Control SHALL use navy or neutral styling as a secondary control, SHALL be operable by keyboard with visible focus, SHALL announce progress and results in an aria-live region, and SHALL be usable at 390 px and 1280 px widths.
 9. THE Photo_Control SHALL use design tokens and SHALL add no dark-red main action to the Profile_Page.
 
+10. WHEN the Owner chooses a valid file, THE Photo_Control SHALL show a circular preview with a draggable, zoomable square crop and "Save photo" and "Cancel" buttons, and SHALL upload nothing until the Owner chooses "Save photo".
+11. THE Photo_Control SHALL keep the crop square, SHALL never stretch the image (one uniform scale), SHALL keep the crop inside the image, and SHALL be operable by keyboard (arrow keys to move, a labelled range input to zoom).
+12. WHILE an upload is in progress, THE Photo_Control SHALL offer "Cancel upload", and an interrupted or cancelled upload SHALL leave the current photo unchanged.
+
 ### Requirement 2: Accepted formats and size
 
 **User Story:** As the project owner, I want only small, standard image formats accepted, so that storage stays bounded and unsafe file types never reach users.
@@ -83,9 +87,10 @@ EARS phrasing. Roles: **owner** (the signed-in user viewing their own profile), 
 2. THE Avatar_Route SHALL store re-encoded images that contain no EXIF metadata, including no GPS data.
 3. THE Avatar_Route SHALL store every re-encoded image as WebP with content type `image/webp` and a size no greater than the Size_Limit.
 4. THE Avatar_Route SHALL apply the EXIF orientation of the input before removing metadata.
-5. THE Avatar_Route SHALL resize each image to fit inside the Output_Size, preserving aspect ratio, without upscaling an image already smaller than the Output_Size.
+5. THE Avatar_Route SHALL cut one square from the oriented image, using the optional `crop` field (fractions `x`, `y`, `size`) or, when absent, the centred largest square, and SHALL resize that square uniformly to at most the Output_Size, without upscaling a square already smaller than the Output_Size. The source is never stretched.
+5a. IF the `crop` field is present but is not valid JSON with finite numbers `x`, `y`, `size` (size greater than 0), THEN THE Avatar_Route SHALL reject the request with status 400 and an invalid-crop message. Values that fall outside the image SHALL be clamped inside it, never trusted.
 6. WHEN the input is an animated image, THE Avatar_Route SHALL encode the first frame only.
-7. FOR ALL accepted inputs, THE stored image dimensions SHALL be no greater than the Output_Size in either dimension (invariant).
+7. FOR ALL accepted inputs and crops, THE stored image SHALL be square and no greater than the Output_Size in either dimension (invariant).
 
 ### Requirement 4: Session-derived identity on the server
 

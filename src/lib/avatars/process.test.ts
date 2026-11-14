@@ -9,7 +9,7 @@ import { MAX_FILE_BYTES, OUTPUT_SIZE } from "./constants";
 const solid = (w: number, h: number) => sharp({ create: { width: w, height: h, channels: 3, background: { r: 140, g: 43, b: 31 } } });
 
 describe("Property 4: processed output invariants", () => {
-  it("is WebP, fits 512, keeps aspect, never upscales, carries no metadata", async () => {
+  it("is a square WebP, at most 512, never upscales, carries no metadata", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.integer({ min: 32, max: 64 }),
@@ -28,7 +28,8 @@ describe("Property 4: processed output invariants", () => {
           expect(m.icc).toBeUndefined();
           expect(m.xmp).toBeUndefined();
           const [ew, eh] = orientation >= 5 ? [h, w] : [w, h];
-          expect([r.width, r.height]).toEqual([ew, eh]); // small inputs are not enlarged
+          const side = Math.min(ew, eh); // centred largest square, small inputs are not enlarged
+          expect([r.width, r.height]).toEqual([side, side]);
           expect(r.width).toBeLessThanOrEqual(OUTPUT_SIZE);
           expect(r.data.length).toBeLessThanOrEqual(MAX_FILE_BYTES);
         },
@@ -53,14 +54,14 @@ describe("sharp fixtures", () => {
     }
   });
 
-  it("resizes large images to fit inside 512 without stretching", async () => {
+  it("crops large images to a 512 square without stretching", async () => {
     const r = await processAvatar(await solid(1600, 900).png().toBuffer());
-    expect(r.ok && [r.width, r.height]).toEqual([512, 288]);
+    expect(r.ok && [r.width, r.height]).toEqual([512, 512]);
   });
 
-  it("applies orientation 6 (swaps width and height)", async () => {
+  it("applies orientation 6 before cropping (60x40 becomes a 40 square)", async () => {
     const r = await processAvatar(await solid(60, 40).jpeg().withMetadata({ orientation: 6 }).toBuffer());
-    expect(r.ok && [r.width, r.height]).toEqual([40, 60]);
+    expect(r.ok && [r.width, r.height]).toEqual([40, 40]);
   });
 
   it("rejects text declared as an image", async () => {
@@ -106,7 +107,7 @@ describe("sharp fixtures", () => {
       .toBuffer();
     expect((await sharp(anim, { animated: true }).metadata()).pages).toBe(2);
     const r = await processAvatar(anim);
-    expect(r.ok && [r.width, r.height]).toEqual([64, 40]);
+    expect(r.ok && [r.width, r.height]).toEqual([40, 40]);
     if (r.ok) expect((await sharp(r.data, { animated: true }).metadata()).pages ?? 1).toBe(1);
   });
 });
