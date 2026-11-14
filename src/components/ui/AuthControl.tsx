@@ -4,13 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { UserRoundIcon } from "@/components/icons";
+import { avatarUrl } from "@/lib/avatars/url";
 
 /**
  * Header auth control. Signed in: a profile chip (links to the user's profile)
  * plus a working Sign out button. Signed out: a Sign in link. Rendered by
  * TopBar on every page, so the header always reflects the session state.
  */
-export function AuthControl({ username }: { username: string | null }) {
+export function AuthControl({ username, avatarPath = null }: { username: string | null; avatarPath?: string | null }) {
+  const photo = avatarUrl(avatarPath);
+  const [photoFailed, setPhotoFailed] = useState<string | null>(null);
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -41,9 +44,14 @@ export function AuthControl({ username }: { username: string | null }) {
       <Link
         href={username ? `/u/${username}` : "/welcome"}
         aria-label={username ? `@${username}` : "Your profile"}
-        className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-deep-navy bg-white text-deep-navy"
+        className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-deep-navy bg-white text-deep-navy"
       >
-        <UserRoundIcon />
+        {photo && photoFailed !== photo ? (
+          // eslint-disable-next-line @next/next/no-img-element -- public Storage URL, already a small WebP
+          <img src={photo} alt="" width={36} height={36} className="h-full w-full object-cover" onError={() => setPhotoFailed(photo)} />
+        ) : (
+          <UserRoundIcon />
+        )}
       </Link>
       <button
         onClick={signOut}

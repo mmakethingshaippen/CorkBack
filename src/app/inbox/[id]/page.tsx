@@ -7,6 +7,7 @@ import { getViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { isParticipant, counterpart, isUuid } from "@/lib/messaging";
 import { SignInToTakePart } from "@/components/ui/SignInToTakePart";
+import { Avatar } from "@/components/ui/Avatar";
 
 /**
  * One private conversation. Participants only: anyone else gets the same
@@ -41,9 +42,11 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
 
   const otherId = counterpart({ userLo: thread.user_lo, userHi: thread.user_hi }, viewer.id);
   let otherHandle = "unknown";
+  let otherAvatarPath: string | null = null;
   if (otherId) {
-    const { data: prof } = await supabase.from("profiles").select("username").eq("id", otherId).maybeSingle();
+    const { data: prof } = await supabase.from("profiles").select("username, avatar_path").eq("id", otherId).maybeSingle();
     otherHandle = prof?.username ?? "unknown";
+    otherAvatarPath = (prof?.avatar_path as string | null) ?? null;
   }
   // Many-to-one embed: PostgREST returns an object (typed loosely by the client).
   const posting = (thread as unknown as { postings?: { id: string; title: string } | null }).postings ?? null;
@@ -52,7 +55,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
     <main className="min-h-screen pb-24">
       <TopBar back={{ href: "/inbox", label: "Messages" }} />
       <div className="mx-auto max-w-2xl px-4 pt-4">
-        <h1 className="text-lg font-bold text-ink">Conversation with @{otherHandle}</h1>
+        <h1 className="flex items-center gap-2 text-lg font-bold text-ink"><Avatar username={otherHandle} path={otherAvatarPath} size={32} /><span className="min-w-0 break-words">Conversation with @{otherHandle}</span></h1>
         <p className="mb-3 text-sm text-ink/70">
           {posting ? (
             <>

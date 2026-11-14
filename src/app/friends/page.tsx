@@ -76,7 +76,7 @@ export default async function FriendsPage() {
                 <ul className="mt-2 divide-y divide-board">
                   {activity.map((a) => (
                     <li key={`${a.username}-${a.posting.id}`} className="py-2 text-sm text-ink">
-                      <PosterHandle username={a.username} />{" "}
+                      <PosterHandle username={a.username} avatarPath={a.avatarPath} />{" "}
                       <span className="font-bold">{a.kind === "going" ? "Going" : "Interested"}</span>
                       {" · "}
                       <Link href={`/p/${a.posting.id}`} className="text-deep-navy underline-offset-2 hover:underline">

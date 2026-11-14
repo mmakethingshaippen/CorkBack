@@ -49,6 +49,7 @@ export interface ReplyView {
   createdAt: string;
   authorId: string;
   authorUsername: string;
+  authorAvatarPath?: string | null;
 }
 
 /** Oldest first with a stable tie-break. */

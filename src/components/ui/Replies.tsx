@@ -91,7 +91,7 @@ export function Replies({
           {replies.map((r) => (
             <li key={r.id} className="rounded-card border border-board bg-white p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                <PosterHandle username={r.authorUsername} />
+                <PosterHandle username={r.authorUsername} avatarPath={r.authorAvatarPath ?? null} />
                 <time dateTime={r.createdAt} className="text-xs text-ink/60">{dateLabel(r.createdAt)}</time>
               </div>
               <p className="mt-1 whitespace-pre-wrap break-words text-ink">{r.body}</p>

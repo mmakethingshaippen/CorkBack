@@ -1,4 +1,10 @@
-# Social Features and Live Fixes — Tasks
+﻿# Implementation Plan: Social Features and Live Fixes
+
+## Overview
+
+Likes, plans and lifecycle (Stage 1), Following (Stage 2), Friends (Stage 3) and Messaging (Stage 4), with live fixes carried along.
+
+## Tasks
 
 Status: [ ] not started · [~] implemented, not verified on deployed site · [x] verified.
 Stop for Max's approval after the plan and after each stage. No production deploy without final approval.
@@ -57,3 +63,35 @@ Stop for Max's approval after the plan and after each stage. No production deplo
 - [ ] 4.2 Migration part 4: `messages.client_id` + unique index.
 - [ ] 4.3 Composer: success, clear, navigate; draft kept on failure; dedupe.
 - [ ] 4.4 Verify both participants, replies both ways, ordering, persistence, duplicate prevention, outsider blocked; real-time only if tested. Logs. **Stop for final approval before production deploy.**
+
+## Notes
+
+- Stop for Max's approval after the plan and after each stage. No production deploy without final approval.
+- See the Outstanding and Release items sections above for carried work.
+
+## Task Dependency Graph
+
+```json
+{
+  "waves": [
+    { "id": 0, "tasks": ["1.1"] },
+    { "id": 1, "tasks": ["1.2", "1.4"] },
+    { "id": 2, "tasks": ["1.3", "1.5", "1.8"] },
+    { "id": 3, "tasks": ["1.6", "1.7"] },
+    { "id": 4, "tasks": ["1.9"] },
+    { "id": 5, "tasks": ["2.1"] },
+    { "id": 6, "tasks": ["2.2"] },
+    { "id": 7, "tasks": ["2.3"] },
+    { "id": 8, "tasks": ["2.4"] },
+    { "id": 9, "tasks": ["3.1"] },
+    { "id": 10, "tasks": ["3.2"] },
+    { "id": 11, "tasks": ["3.3"] },
+    { "id": 12, "tasks": ["3.4"] },
+    { "id": 13, "tasks": ["4.1"] },
+    { "id": 14, "tasks": ["4.2"] },
+    { "id": 15, "tasks": ["4.3"] },
+    { "id": 16, "tasks": ["4.4"] }
+  ]
+}
+```
+

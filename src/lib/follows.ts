@@ -24,10 +24,10 @@ export async function isFollowing(supabase: SupabaseClient, followerId: string, 
 }
 
 /** Usernames and ids of the profiles the viewer follows (oldest follow first). */
-export async function listFollowees(supabase: SupabaseClient, followerId: string): Promise<{ id: string; username: string }[]> {
+export async function listFollowees(supabase: SupabaseClient, followerId: string): Promise<{ id: string; username: string; avatarPath: string | null }[]> {
   const { data, error } = await supabase
     .from("follows")
-    .select("followee_id, created_at, profiles!follows_followee_id_fkey(username)")
+    .select("followee_id, created_at, profiles!follows_followee_id_fkey(username, avatar_path)")
     .eq("follower_id", followerId)
     .order("created_at", { ascending: true })
     .limit(500);
@@ -35,11 +35,12 @@ export async function listFollowees(supabase: SupabaseClient, followerId: string
   return (data ?? []).map((r) => ({
     id: String(r.followee_id),
     username: (r as { profiles?: { username?: string } | null }).profiles?.username ?? "",
+    avatarPath: (r as { profiles?: { avatar_path?: string | null } | null }).profiles?.avatar_path ?? null,
   })).filter((r) => r.username);
 }
 
 export async function getFollowingFeed(viewerId: string, now = new Date()): Promise<{
-  followees: { id: string; username: string }[];
+  followees: { id: string; username: string; avatarPath: string | null }[];
   categories: string[];
   postings: Posting[];
 }> {

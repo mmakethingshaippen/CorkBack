@@ -13,6 +13,7 @@ import type { PlanKind } from "./types";
 
 export interface PersonEntry {
   username: string;
+  avatarPath: string | null;
   since: string;
 }
 
@@ -30,7 +31,7 @@ async function myRows(supabase: SupabaseClient, me: string) {
   const { data, error } = await supabase
     .from("connections")
     .select(
-      "requester_id, addressee_id, status, created_at, requester:profiles!connections_requester_id_fkey(username), addressee:profiles!connections_addressee_id_fkey(username)",
+      "requester_id, addressee_id, status, created_at, requester:profiles!connections_requester_id_fkey(username, avatar_path), addressee:profiles!connections_addressee_id_fkey(username, avatar_path)",
     )
     .or(`requester_id.eq.${me},addressee_id.eq.${me}`)
     .order("created_at", { ascending: false })
@@ -38,8 +39,8 @@ async function myRows(supabase: SupabaseClient, me: string) {
   if (error) throw new Error(`Could not load your friends (${error.code ?? "unknown"}).`);
   return (data ?? []) as unknown as (ConnectionRow & {
     created_at: string;
-    requester: { username: string } | null;
-    addressee: { username: string } | null;
+    requester: { username: string; avatar_path: string | null } | null;
+    addressee: { username: string; avatar_path: string | null } | null;
   })[];
 }
 
@@ -57,9 +58,10 @@ export async function listConnections(supabase: SupabaseClient, me: string): Pro
   const byUsername: Record<string, Relationship> = {};
   for (const r of rows) {
     const iAmRequester = r.requester_id === me;
-    const other = (iAmRequester ? r.addressee : r.requester)?.username;
+    const person = iAmRequester ? r.addressee : r.requester;
+    const other = person?.username;
     if (!other) continue;
-    const entry = { username: other, since: r.created_at };
+    const entry = { username: other, avatarPath: person?.avatar_path ?? null, since: r.created_at };
     if (r.status === "accepted") {
       friends.push(entry);
       byUsername[other] = "friends";
@@ -77,6 +79,7 @@ export async function listConnections(supabase: SupabaseClient, me: string): Pro
 
 export interface FriendActivity {
   username: string;
+  avatarPath: string | null;
   kind: PlanKind;
   posting: { id: string; title: string; eventDate: string | null; placeLabel: string };
 }
@@ -91,7 +94,7 @@ export async function listFriendActivity(supabase: SupabaseClient, me: string, n
   const { data, error } = await supabase
     .from("plans")
     .select(
-      "kind, created_at, user_id, profiles!plans_user_id_fkey(username), postings!plans_posting_id_fkey(id, title, event_date, place_label, expires_at, end_date, end_time, time_zone, lat, lng, deleted_at)",
+      "kind, created_at, user_id, profiles!plans_user_id_fkey(username, avatar_path), postings!plans_posting_id_fkey(id, title, event_date, place_label, expires_at, end_date, end_time, time_zone, lat, lng, deleted_at)",
     )
     .neq("user_id", me)
     .order("created_at", { ascending: false })
@@ -100,7 +103,7 @@ export async function listFriendActivity(supabase: SupabaseClient, me: string, n
   const out: FriendActivity[] = [];
   for (const r of (data ?? []) as unknown as {
     kind: PlanKind;
-    profiles: { username: string } | null;
+    profiles: { username: string; avatar_path: string | null } | null;
     postings: {
       id: string; title: string; event_date: string | null; place_label: string; expires_at: string;
       end_date: string | null; end_time: string | null; time_zone: string | null; lat: number; lng: number; deleted_at: string | null;
@@ -115,6 +118,7 @@ export async function listFriendActivity(supabase: SupabaseClient, me: string, n
     if (!isPostingActive(lifecycle, now)) continue;
     out.push({
       username: r.profiles.username,
+      avatarPath: r.profiles.avatar_path ?? null,
       kind: r.kind,
       posting: { id: p.id, title: p.title, eventDate: p.event_date, placeLabel: p.place_label ?? "" },
     });

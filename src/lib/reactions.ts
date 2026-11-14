@@ -119,10 +119,10 @@ export async function getFriendPlans(
   supabase: SupabaseClient,
   postingId: string,
   viewerId: string,
-): Promise<{ username: string; kind: PlanKind }[]> {
+): Promise<{ username: string; avatarPath: string | null; kind: PlanKind }[]> {
   const { data, error } = await supabase
     .from("plans")
-    .select("kind, profiles!plans_user_id_fkey(username)")
+    .select("kind, profiles!plans_user_id_fkey(username, avatar_path)")
     .eq("posting_id", postingId)
     .neq("user_id", viewerId)
     .order("created_at", { ascending: true })
@@ -133,8 +133,8 @@ export async function getFriendPlans(
   }
   return (data ?? [])
     .map((r) => {
-      const prof = (r as { profiles?: { username?: string } | null }).profiles;
-      return { username: prof?.username ?? "", kind: (r as { kind: PlanKind }).kind };
+      const prof = (r as { profiles?: { username?: string; avatar_path?: string | null } | null }).profiles;
+      return { username: prof?.username ?? "", avatarPath: prof?.avatar_path ?? null, kind: (r as { kind: PlanKind }).kind };
     })
     .filter((r) => r.username);
 }

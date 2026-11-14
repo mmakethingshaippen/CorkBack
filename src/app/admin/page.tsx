@@ -6,7 +6,8 @@ import { CorkBand } from "@/components/ui/CorkBand";
 import { createClient } from "@/lib/supabase/server";
 import { getViewer } from "@/lib/auth";
 import { viewerIsAdmin } from "@/lib/moderationData";
-import { QUEUE_PAGE_SIZE, fetchLog, fetchQueue, parseQueueStatus, parseReasonFilter } from "@/lib/adminData";
+import { QUEUE_PAGE_SIZE, fetchLog, fetchQueue, lookupAvatarPaths, parseQueueStatus, parseReasonFilter } from "@/lib/adminData";
+import { Avatar } from "@/components/ui/Avatar";
 import { REPORT_REASONS, REPORT_REASON_LABEL } from "@/lib/moderation";
 import { AdminQueue } from "./AdminQueue";
 
@@ -35,6 +36,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const offset = Math.max(0, Number.parseInt(sp.offset ?? "0", 10) || 0);
   const [queue, log] = await Promise.all([fetchQueue(supabase, { status, reason, offset }), fetchLog(supabase, null, 30)]);
   if (!queue.ok) notFound();
+  const avatars = await lookupAvatarPaths(supabase, [
+    ...queue.value.items.flatMap((i) => [i.reporterUsername, i.postingAuthorUsername, i.resolvedByUsername]),
+    ...(log.ok ? log.value.map((l) => l.adminUsername) : []),
+  ]);
 
   const href = (over: { status?: string; reason?: string | null; offset?: number }) => {
     const q = new URLSearchParams();
@@ -86,7 +91,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               ))}
             </nav>
             <div className="mt-3">
-              <AdminQueue items={queue.value.items} />
+              <AdminQueue items={queue.value.items} avatars={avatars} />
             </div>
             <div className="mt-3 flex gap-3">
               {offset > 0 ? <Link href={href({ offset: Math.max(0, offset - QUEUE_PAGE_SIZE) })} className="inline-flex min-h-[44px] items-center font-bold text-deep-navy underline-offset-2 hover:underline">Newer</Link> : null}
@@ -102,7 +107,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                   <li key={l.id} className="py-2 text-ink">
                     <span className="font-bold">{l.action === "hide_posting" ? "Hid" : l.action === "restore_posting" ? "Restored" : "Dismissed a report on"}</span>{" "}
                     <span className="break-words">{l.postingTitle ?? "a removed posting"}</span>
-                    <span className="block text-xs text-ink/60">@{l.adminUsername} · {when(l.createdAt)}</span>
+                    <span className="mt-0.5 flex items-center gap-1 text-xs text-ink/60"><Avatar username={l.adminUsername} path={avatars[l.adminUsername] ?? null} size={18} />@{l.adminUsername} · {when(l.createdAt)}</span>
                     {l.reason ? <span className="block break-words text-xs text-ink/80">{l.reason}</span> : null}
                   </li>
                 ))}

@@ -50,7 +50,7 @@ export default async function PostingPage({
   // decides visibility), so the page shows saved state after refresh/sign-in.
   const stateAt = new Date().toISOString(); // server read time, for card/detail like consistency
   let mine: { liked: boolean; plan: PlanKind | null } = { liked: false, plan: null };
-  let friendPlans: { username: string; kind: PlanKind }[] = [];
+  let friendPlans: { username: string; avatarPath: string | null; kind: PlanKind }[] = [];
   let followingAuthor = false;
   let alreadyReported = false;
   if (viewer && isUuid(posting.id)) {
@@ -171,7 +171,7 @@ export default async function PostingPage({
             <NavyLink href={`/u/${posting.authorUsername}`}>View profile</NavyLink>
           </div>
           <div className="mt-1">
-            <PosterHandle username={posting.authorUsername} />
+            <PosterHandle username={posting.authorUsername} avatarPath={posting.authorAvatarPath ?? null} avatarSize={32} />
           </div>
           <div className="mt-3">
             <FollowButton

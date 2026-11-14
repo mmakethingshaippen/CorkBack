@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   }
 
   const [{ data, error }, mine] = await Promise.all([
-    supabase.from("profiles").select("username").ilike("username", prefixPattern(q)).neq("id", user.id)
+    supabase.from("profiles").select("username, avatar_path").ilike("username", prefixPattern(q)).neq("id", user.id)
       .order("username", { ascending: true }).limit(20),
     listConnections(supabase, user.id),
   ]);
@@ -33,6 +33,7 @@ export async function GET(req: Request) {
 
   const results = (data ?? []).map((r) => ({
     username: String(r.username),
+    avatarPath: (r.avatar_path as string | null) ?? null,
     state: (mine.byUsername[String(r.username)] ?? "none") as Relationship,
   }));
   return NextResponse.json({ results });

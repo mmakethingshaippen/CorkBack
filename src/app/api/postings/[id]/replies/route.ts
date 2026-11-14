@@ -46,13 +46,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Read it back as the author (RLS). If it was deleted since a retried key, there is nothing to return.
   const { data: row } = await supabase
     .from("replies")
-    .select("id, body, created_at, author_id, profiles!replies_author_id_fkey(username)")
+    .select("id, body, created_at, author_id, profiles!replies_author_id_fkey(username, avatar_path)")
     .eq("id", replyId)
     .maybeSingle();
   if (!row) return NextResponse.json({ id: replyId, reply: null });
-  const r = row as unknown as { id: string; body: string; created_at: string; author_id: string; profiles: { username?: string } | null };
+  const r = row as unknown as { id: string; body: string; created_at: string; author_id: string; profiles: { username?: string; avatar_path?: string | null } | null };
   return NextResponse.json({
     id: replyId,
-    reply: { id: r.id, body: r.body, createdAt: r.created_at, authorId: r.author_id, authorUsername: r.profiles?.username ?? "unknown" },
+    reply: { id: r.id, body: r.body, createdAt: r.created_at, authorId: r.author_id, authorUsername: r.profiles?.username ?? "unknown", authorAvatarPath: r.profiles?.avatar_path ?? null },
   });
 }

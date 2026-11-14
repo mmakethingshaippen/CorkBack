@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { NavyLink } from "@/components/ui/actions";
+import { Avatar } from "@/components/ui/Avatar";
 
 interface ThreadRow {
   id: string;
   postingTitle: string | null;
   otherHandle: string;
+  otherAvatarPath?: string | null;
   lastMessage: string | null;
   lastAt: string;
   lastFromMe: boolean;
@@ -72,7 +74,7 @@ export function InboxList() {
         <li key={t.id}>
           <Link href={`/inbox/${t.id}`} className="block rounded-card border border-board bg-card p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-bold text-deep-navy">@{t.otherHandle}</span>
+              <span className="flex min-w-0 items-center gap-2 font-bold text-deep-navy"><Avatar username={t.otherHandle} path={t.otherAvatarPath ?? null} size={28} /><span className="truncate">@{t.otherHandle}</span></span>
               <time dateTime={t.lastAt} className="shrink-0 text-xs text-ink/50">{new Date(t.lastAt).toLocaleDateString()}</time>
             </div>
             {t.postingTitle ? <p className="truncate text-xs text-ink/60">About: {t.postingTitle}</p> : null}

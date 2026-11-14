@@ -126,3 +126,18 @@ export async function fetchLog(supabase: SupabaseClient, postingId: string | nul
     })),
   };
 }
+
+/**
+ * username -> stored photo path for the admin screens, whose database functions
+ * return usernames only. One `profiles` read (public columns); an empty list
+ * makes no request. Failure just means fallback avatars.
+ */
+export async function lookupAvatarPaths(supabase: SupabaseClient, usernames: (string | null | undefined)[]): Promise<Record<string, string | null>> {
+  const unique = [...new Set(usernames.filter((u): u is string => typeof u === "string" && u.length > 0))].slice(0, 200);
+  if (unique.length === 0) return {};
+  const { data, error } = await supabase.from("profiles").select("username, avatar_path").in("username", unique);
+  if (error || !data) return {};
+  const out: Record<string, string | null> = {};
+  for (const r of data as { username: string; avatar_path: string | null }[]) out[r.username] = r.avatar_path ?? null;
+  return out;
+}

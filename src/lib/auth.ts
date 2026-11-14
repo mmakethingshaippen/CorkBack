@@ -13,7 +13,7 @@ function supabaseConfigured(): boolean {
   );
 }
 
-export async function getViewer(): Promise<{ id: string; username: string | null } | null> {
+export async function getViewer(): Promise<{ id: string; username: string | null; avatarPath: string | null } | null> {
   if (!supabaseConfigured()) return null;
   const supabase = await createClient();
   const {
@@ -22,10 +22,10 @@ export async function getViewer(): Promise<{ id: string; username: string | null
   if (!user) return null;
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username")
+    .select("username, avatar_path")
     .eq("id", user.id)
     .maybeSingle();
-  return { id: user.id, username: profile?.username ?? null };
+  return { id: user.id, username: profile?.username ?? null, avatarPath: (profile?.avatar_path as string | null) ?? null };
 }
 
 export async function isSignedIn(): Promise<boolean> {

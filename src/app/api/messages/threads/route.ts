@@ -28,7 +28,7 @@ export async function GET() {
       const otherId = counterpart({ userLo: t.user_lo, userHi: t.user_hi }, user.id);
       const [prof, last] = await Promise.all([
         otherId
-          ? supabase.from("profiles").select("username").eq("id", otherId).maybeSingle()
+          ? supabase.from("profiles").select("username, avatar_path").eq("id", otherId).maybeSingle()
           : Promise.resolve({ data: null }),
         supabase
           .from("messages")
@@ -43,6 +43,7 @@ export async function GET() {
         id: t.id,
         postingTitle: (t as { postings?: { title?: string } | null }).postings?.title ?? null,
         otherHandle: (prof.data as { username?: string } | null)?.username ?? "unknown",
+        otherAvatarPath: (prof.data as { avatar_path?: string | null } | null)?.avatar_path ?? null,
         lastMessage: last.data?.body ?? null,
         lastAt: last.data?.created_at ?? t.created_at,
         lastFromMe: last.data?.sender_id === user.id,

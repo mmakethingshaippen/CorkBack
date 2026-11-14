@@ -5,8 +5,8 @@ import { PosterHandle } from "@/components/ui/PosterHandle";
 import { useConnectionAction } from "@/components/ui/useConnectionAction";
 import type { ConnectionAction, Relationship } from "@/lib/connectionState";
 
-type Person = { username: string; since: string };
-type Result = { username: string; state: Relationship };
+type Person = { username: string; avatarPath: string | null; since: string };
+type Result = { username: string; avatarPath: string | null; state: Relationship };
 
 const outline = "rounded-control border-2 border-deep-navy bg-white px-4 py-1.5 text-sm font-bold text-deep-navy";
 const solid = "rounded-control border-2 border-deep-navy bg-deep-navy px-4 py-1.5 text-sm font-bold text-white";
@@ -95,7 +95,7 @@ export function FriendsManager({ incoming, outgoing, friends }: { incoming: Pers
         <ul className="mt-2 divide-y divide-board">
           {people.map((p) => (
             <li key={p.username} className="flex flex-wrap items-center justify-between gap-2 py-2">
-              <PosterHandle username={p.username} />
+              <PosterHandle username={p.username} avatarPath={p.avatarPath ?? null} />
               <span className="flex flex-wrap items-center gap-2">{controls(p.username, state)}</span>
             </li>
           ))}
@@ -135,7 +135,7 @@ export function FriendsManager({ incoming, outgoing, friends }: { incoming: Pers
           <ul className="mt-2 divide-y divide-board">
             {results.map((r) => (
               <li key={r.username} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <PosterHandle username={r.username} />
+                <PosterHandle username={r.username} avatarPath={r.avatarPath ?? null} />
                 <span className="flex flex-wrap items-center gap-2">{controls(r.username, r.state)}</span>
               </li>
             ))}

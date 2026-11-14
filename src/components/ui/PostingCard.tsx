@@ -57,7 +57,7 @@ export function PostingCard({
       </p>
       <div className="relative z-10 mt-3 text-sm">
         <span className="flex min-h-[44px] items-center">
-          <PosterHandle username={posting.authorUsername} />
+          <PosterHandle username={posting.authorUsername} avatarPath={posting.authorAvatarPath ?? null} />
         </span>
         <CardReactions
           postingId={posting.id}

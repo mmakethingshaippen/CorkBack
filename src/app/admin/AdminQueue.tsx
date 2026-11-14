@@ -5,10 +5,22 @@ import { useRouter } from "next/navigation";
 import { NavyLink } from "@/components/ui/actions";
 import { POSTING_STATE_LABEL, REPORT_REASON_LABEL, MODERATION_REASON_MAX } from "@/lib/moderation";
 import type { LogItem, PostingDetail, QueueItem } from "@/lib/adminData";
+import { Avatar } from "@/components/ui/Avatar";
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) + " UTC";
 
+type Avatars = Record<string, string | null>;
+
+/** An avatar and @handle, or the deleted-account text. Usernames only. */
+function Who({ name, avatars }: { name: string | null | undefined; avatars: Avatars }) {
+  if (!name) return <>a deleted account</>;
+  return (
+    <span className="inline-flex items-center gap-1 align-middle">
+      <Avatar username={name} path={avatars[name] ?? null} size={20} />@{name}
+    </span>
+  );
+}
 type Panel = { reportId: string; kind: "dismiss" | "hide" | "restore" } | null;
 
 /**
@@ -19,7 +31,9 @@ type Panel = { reportId: string; kind: "dismiss" | "hide" | "restore" } | null;
  * happened (already hidden, already resolved, ...). Escape closes the panel and
  * returns focus to the button that opened it.
  */
-export function AdminQueue({ items }: { items: QueueItem[] }) {
+export function AdminQueue({ items, avatars = {} }: { items: QueueItem[]; avatars?: Avatars }) {
+  const [extraAvatars, setExtraAvatars] = useState<Avatars>({});
+  const known: Avatars = { ...avatars, ...extraAvatars };
   const router = useRouter();
   const [panel, setPanel] = useState<Panel>(null);
   const [text, setText] = useState("");
@@ -87,7 +101,9 @@ export function AdminQueue({ items }: { items: QueueItem[] }) {
     try {
       const res = await fetch(`/api/admin/postings/${postingId}`);
       if (!res.ok) return setDetail({ id: postingId, data: "error" });
-      setDetail({ id: postingId, data: (await res.json()) as { posting: PostingDetail; history: LogItem[] } });
+      const json = (await res.json()) as { posting: PostingDetail; history: LogItem[]; avatars?: Avatars };
+      if (json.avatars) setExtraAvatars((cur) => ({ ...cur, ...json.avatars }));
+      setDetail({ id: postingId, data: { posting: json.posting, history: json.history } });
     } catch {
       setDetail({ id: postingId, data: "error" });
     }
@@ -120,20 +136,20 @@ export function AdminQueue({ items }: { items: QueueItem[] }) {
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-ink">
-                  Reported by {it.reporterUsername ? `@${it.reporterUsername}` : "a deleted account"}
+                  Reported by <Who name={it.reporterUsername} avatars={known} />
                 </p>
                 {it.details ? <p className="mt-1 whitespace-pre-wrap break-words rounded-[12px] bg-board/30 p-2 text-sm text-ink">{it.details}</p> : null}
 
                 <p className="mt-2 break-words text-ink">
                   <span className="font-bold">{it.postingTitle}</span>{" "}
                   <span className="text-sm text-ink/70">
-                    by {it.postingAuthorUsername ? `@${it.postingAuthorUsername}` : "a deleted account"} · {POSTING_STATE_LABEL[it.postingState]}
+                    by <Who name={it.postingAuthorUsername} avatars={known} /> · {POSTING_STATE_LABEL[it.postingState]}
                   </span>
                 </p>
                 {it.postingPendingReports > 1 ? <p className="text-xs text-ink/60">{it.postingPendingReports} pending reports on this posting</p> : null}
                 {it.status !== "pending" && it.resolvedAt ? (
                   <p className="mt-1 text-xs text-ink/60">
-                    Resolved {when(it.resolvedAt)}{it.resolvedByUsername ? ` by @${it.resolvedByUsername}` : ""}
+                    Resolved {when(it.resolvedAt)}{it.resolvedByUsername ? <> by <Who name={it.resolvedByUsername} avatars={known} /></> : ""}
                     {it.resolutionNote ? `: ${it.resolutionNote}` : ""}
                   </p>
                 ) : null}
@@ -196,7 +212,7 @@ export function AdminQueue({ items }: { items: QueueItem[] }) {
                       <>
                         <p className="font-bold">{detail.data.posting.title}</p>
                         <p className="text-ink/70">
-                          {POSTING_STATE_LABEL[detail.data.posting.state]} · by {detail.data.posting.authorUsername ? `@${detail.data.posting.authorUsername}` : "a deleted account"}
+                          {POSTING_STATE_LABEL[detail.data.posting.state]} · by <Who name={detail.data.posting.authorUsername} avatars={known} />
                           {detail.data.posting.placeLabel ? ` · ${detail.data.posting.placeLabel}` : ""}
                           {detail.data.posting.eventDate ? ` · ${detail.data.posting.eventDate}` : ""}
                         </p>
@@ -205,7 +221,7 @@ export function AdminQueue({ items }: { items: QueueItem[] }) {
                         {detail.data.history.length ? (
                           <ul className="mt-2 list-disc pl-5 text-xs text-ink/70">
                             {detail.data.history.map((h) => (
-                              <li key={h.id}>{when(h.createdAt)}: {h.action.replace("_", " ")} by @{h.adminUsername}{h.reason ? ` (${h.reason})` : ""}</li>
+                              <li key={h.id}>{when(h.createdAt)}: {h.action.replace("_", " ")} by <Who name={h.adminUsername} avatars={known} />{h.reason ? ` (${h.reason})` : ""}</li>
                             ))}
                           </ul>
                         ) : <p className="mt-2 text-xs text-ink/60">No moderation history for this posting.</p>}

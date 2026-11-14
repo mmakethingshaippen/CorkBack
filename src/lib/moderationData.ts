@@ -44,7 +44,7 @@ export async function hasPendingReport(supabase: SupabaseClient, postingId: stri
 export async function listReplies(supabase: SupabaseClient, postingId: string): Promise<ReplyView[]> {
   const { data, error } = await supabase
     .from("replies")
-    .select("id, body, created_at, author_id, profiles!replies_author_id_fkey(username)")
+    .select("id, body, created_at, author_id, profiles!replies_author_id_fkey(username, avatar_path)")
     .eq("posting_id", postingId)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true })
@@ -54,13 +54,14 @@ export async function listReplies(supabase: SupabaseClient, postingId: string): 
     return [];
   }
   return (data ?? []).map((r) => {
-    const row = r as unknown as { id: string; body: string; created_at: string; author_id: string; profiles: { username?: string } | null };
+    const row = r as unknown as { id: string; body: string; created_at: string; author_id: string; profiles: { username?: string; avatar_path?: string | null } | null };
     return {
       id: String(row.id),
       body: String(row.body),
       createdAt: String(row.created_at),
       authorId: String(row.author_id),
       authorUsername: row.profiles?.username ?? "unknown",
+      authorAvatarPath: row.profiles?.avatar_path ?? null,
     };
   });
 }

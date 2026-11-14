@@ -22,6 +22,8 @@ export interface Posting {
   expiresAt: string; // ISO datetime
   isPromoted: boolean;
   authorUsername: string;
+  /** Author's stored photo path (avatars bucket), or null for the fallback. */
+  authorAvatarPath?: string | null;
   /** Aggregate counts only. Who liked / who plans to go is never part of a posting. */
   likeCount: number;
   goingCount: number;

@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 export default async function FollowingPage() {
   const viewer = await getViewer();
 
-  let feed: { followees: { id: string; username: string }[]; categories: string[]; postings: Posting[] } | null = null;
+  let feed: { followees: { id: string; username: string; avatarPath: string | null }[]; categories: string[]; postings: Posting[] } | null = null;
   let loadError: string | null = null;
   if (viewer) {
     try {
@@ -105,7 +105,7 @@ export default async function FollowingPage() {
             <ul className="flex flex-wrap gap-x-4 gap-y-2">
               {feed.followees.map((f) => (
                 <li key={f.id}>
-                  <PosterHandle username={f.username} />
+                  <PosterHandle username={f.username} avatarPath={f.avatarPath} />
                 </li>
               ))}
             </ul>

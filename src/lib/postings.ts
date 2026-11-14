@@ -57,10 +57,10 @@ function supabaseConfigured(): boolean {
 // PostgREST needs the exact FK (PGRST201). Counts are NOT embedded: likes rows
 // are private, so counts come from posting_reaction_counts.
 const POSTING_COLUMNS =
-  "id, title, body, flyer_url, rsvp_url, event_date, event_time, end_date, end_time, time_zone, place_label, lat, lng, expiry, expires_at, is_promoted, created_at, profiles!postings_author_id_fkey(username), categories(slug)";
+  "id, title, body, flyer_url, rsvp_url, event_date, event_time, end_date, end_time, time_zone, place_label, lat, lng, expiry, expires_at, is_promoted, created_at, profiles!postings_author_id_fkey(username, avatar_path), categories(slug)";
 
 function rowToPosting(r: Record<string, unknown>): Posting {
-  const profiles = r.profiles as { username?: string } | null;
+  const profiles = r.profiles as { username?: string; avatar_path?: string | null } | null;
   const categories = r.categories as { slug?: string } | null;
   return {
     id: String(r.id),
@@ -81,6 +81,7 @@ function rowToPosting(r: Record<string, unknown>): Posting {
     expiresAt: String(r.expires_at),
     isPromoted: Boolean(r.is_promoted),
     authorUsername: profiles?.username ?? "unknown",
+    authorAvatarPath: profiles?.avatar_path ?? null,
     likeCount: 0,
     goingCount: 0,
     interestedCount: 0,
@@ -196,20 +197,20 @@ export async function listPostingRowsByAuthorIds(
  */
 export async function getProfileByUsername(
   username: string,
-): Promise<{ id: string; username: string } | null> {
+): Promise<{ id: string; username: string; avatarPath: string | null } | null> {
   if (!supabaseConfigured()) {
     // Seed mode: treat the seed posting authors as the only known profiles.
     const known = SEED_POSTINGS.some((p) => p.authorUsername === username);
-    return known ? { id: `seed-${username}`, username } : null;
+    return known ? { id: `seed-${username}`, username, avatarPath: null } : null;
   }
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, username")
+    .select("id, username, avatar_path")
     .eq("username", username)
     .maybeSingle();
   if (error) throw toReadableError("getProfileByUsername", error);
-  return data ? { id: String(data.id), username: String(data.username) } : null;
+  return data ? { id: String(data.id), username: String(data.username), avatarPath: (data.avatar_path as string | null) ?? null } : null;
 }
 
 /** Active postings authored by a given username, promoted-first within groups. */

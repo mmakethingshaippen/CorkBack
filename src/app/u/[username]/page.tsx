@@ -14,6 +14,9 @@ import { viewerIsAdmin } from "@/lib/moderationData";
 import { ConnectButton } from "@/components/ui/ConnectButton";
 import { getRelationship } from "@/lib/connections";
 import type { Relationship } from "@/lib/connectionState";
+import { Avatar } from "@/components/ui/Avatar";
+import { AvatarUploader } from "@/components/ui/AvatarUploader";
+import { canManageAvatar } from "@/lib/avatars/validate";
 
 /**
  * Poster profile — the target of the navy @handle link. Shows the real username,
@@ -36,6 +39,8 @@ export default async function ProfilePage({
   const [rawPostings, viewer] = await Promise.all([listPostingsByUsername(profile.username), getViewer()]);
   const postings = await attachViewerLikes(rawPostings, viewer?.id ?? null);
   const isSelf = viewer?.id === profile.id;
+  // Photo control: the owner of a real profile only. Admin status is not an input.
+  const canEditPhoto = canManageAvatar({ viewerId: viewer?.id, profileId: profile.id });
   let following = false;
   let relationship: Relationship = "none";
   // The Admin link is a convenience on the admin's OWN profile only; /admin enforces access itself.
@@ -53,7 +58,11 @@ export default async function ProfilePage({
     <main className="min-h-screen pb-24">
       <TopBar back={{ href: "/", label: "Back to map" }} />
       <div className="space-y-4 px-4">
-        <PosterHandle username={profile.username} className="text-2xl" />
+        <div className="flex items-center gap-4">
+          <Avatar username={profile.username} path={profile.avatarPath} size={88} />
+          <PosterHandle username={profile.username} className="min-w-0 break-words text-2xl" />
+        </div>
+        {canEditPhoto ? <AvatarUploader hasPhoto={Boolean(profile.avatarPath)} /> : null}
         {isSelf && deleted === "1" ? (
           <p role="status" className="rounded-card border border-board bg-board/40 p-3 font-bold text-ink">
             Your posting was deleted. It&apos;s off the map and your profile.

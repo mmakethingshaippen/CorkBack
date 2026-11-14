@@ -28,7 +28,7 @@ export async function TopBar({
         ) : null}
         <Wordmark />
       </div>
-      {right ?? <AuthControl username={viewer ? viewer.username ?? "" : null} />}
+      {right ?? <AuthControl username={viewer ? viewer.username ?? "" : null} avatarPath={viewer?.avatarPath ?? null} />}
     </header>
   );
 }

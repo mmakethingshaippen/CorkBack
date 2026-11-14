@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminErrorResponse } from "@/lib/moderation";
-import { fetchLog, fetchPostingDetail } from "@/lib/adminData";
+import { fetchLog, fetchPostingDetail, lookupAvatarPaths } from "@/lib/adminData";
 import { isUuid } from "@/lib/reactionState";
 
 /**
@@ -23,5 +23,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: f.error, code: f.code }, { status: f.status });
   }
   if (!detail.value) return notFound();
-  return NextResponse.json({ posting: detail.value, history: log.value });
+  const avatars = await lookupAvatarPaths(supabase, [detail.value.authorUsername, ...log.value.map((h) => h.adminUsername)]);
+  return NextResponse.json({ posting: detail.value, history: log.value, avatars });
 }

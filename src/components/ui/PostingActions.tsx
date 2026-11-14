@@ -38,7 +38,7 @@ export function PostingActions({
   signedIn: boolean;
   ended: boolean;
   initial: Snapshot;
-  friendPlans?: { username: string; kind: PlanKind }[];
+  friendPlans?: { username: string; avatarPath?: string | null; kind: PlanKind }[];
   /** Server time this state was read (ISO); see src/lib/likeStore.ts. */
   stateAt?: string;
 }) {
@@ -220,7 +220,7 @@ export function PostingActions({
               {friendsGoing.map((f, i) => (
                 <span key={f.username}>
                   {i ? ", " : ""}
-                  <PosterHandle username={f.username} />
+                  <PosterHandle username={f.username} avatarPath={f.avatarPath ?? null} avatarSize={20} />
                 </span>
               ))}
             </p>
@@ -231,7 +231,7 @@ export function PostingActions({
               {friendsInterested.map((f, i) => (
                 <span key={f.username}>
                   {i ? ", " : ""}
-                  <PosterHandle username={f.username} />
+                  <PosterHandle username={f.username} avatarPath={f.avatarPath ?? null} avatarSize={20} />
                 </span>
               ))}
             </p>
