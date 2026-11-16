@@ -51,10 +51,13 @@ export function MapView({
   postings,
   onBoundsChange,
   initialView,
+  onFirstFit,
 }: {
   postings: Posting[];
   /** Starting camera when the map has no postings yet (the world map passes the whole world). */
   initialView?: { center: [number, number]; zoom: number };
+  /** Called once, after the map has fitted itself to the first postings it received. */
+  onFirstFit?: () => void;
   /** Called after each moveend (and once when the map first loads). */
   onBoundsChange?: (bounds: Bounds) => void;
 }) {
@@ -67,6 +70,8 @@ export function MapView({
   const routerRef = useRef(router);
   const boundsCbRef = useRef(onBoundsChange);
   const initialViewRef = useRef(initialView);
+  const firstFitRef = useRef(onFirstFit);
+  firstFitRef.current = onFirstFit;
   postingsRef.current = postings;
   routerRef.current = router;
   boundsCbRef.current = onBoundsChange;
@@ -122,14 +127,13 @@ export function MapView({
       markers.set(p.id, new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
     }
 
-    // Fit once, on the first load that has pins. Never refit afterwards.
+    // Fit once, on the first load that has pins (one pin included). Never refit afterwards.
     if (!fittedRef.current && postings.length > 0) {
       fittedRef.current = true;
-      if (postings.length > 1) {
-        const bounds = new maplibregl.LngLatBounds();
-        postings.forEach((p) => bounds.extend([p.lng, p.lat]));
-        map.fitBounds(bounds, { padding: 48, maxZoom: 13, duration: 0 });
-      }
+      const bounds = new maplibregl.LngLatBounds();
+      postings.forEach((p) => bounds.extend([p.lng, p.lat]));
+      map.fitBounds(bounds, { padding: 48, maxZoom: 13, duration: 0 });
+      firstFitRef.current?.();
     }
   }, [postings]);
 

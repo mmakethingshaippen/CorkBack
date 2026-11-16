@@ -14,6 +14,16 @@ describe("world map starting view", () => {
     expect(m).not.toBeNull();
     expect(Number(m![3])).toBeLessThanOrEqual(1);
   });
+  it("the first request covers the whole world until the map has fitted to its first pins", () => {
+    const s = src("src/components/map/WorldMapSection.tsx");
+    expect(s).toMatch(/WHOLE_WORLD: Bounds = \{ west: -180, south: -85, east: 180, north: 85 \}/);
+    expect(s).toMatch(/bounds: fitted \? bounds : WHOLE_WORLD/);
+    expect(s).toMatch(/onFirstFit=\{\(\) => setFitted\(true\)\}/);
+    const m = src("src/components/map/MapView.tsx");
+    expect(m).toMatch(/postings\.length > 0\) \{\s*fittedRef\.current = true;/);
+    expect(m).not.toMatch(/if \(postings\.length > 1\)/); // one pin also fits
+    expect(m).toMatch(/firstFitRef\.current\?\.\(\)/);
+  });
   it("MapView uses initialView only when it has no postings yet", () => {
     const s = src("src/components/map/MapView.tsx");
     expect(s).toMatch(/first \? \[first\.lng, first\.lat\] : initialViewRef\.current\?\.center/);

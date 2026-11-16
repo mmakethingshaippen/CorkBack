@@ -618,9 +618,11 @@ try {
     await scn("D4", async () => {
       const { page, errors, context, mock, net } = await start(DATA);
       await scrollWorldIntoView(page);
-      const titles0 = await worldTitles(page);
-      await page.$$eval(`${W} .maplibregl-marker[aria-label]`, (ms) => ms.forEach((m) => (m.dataset.keep = "1")));
       for (const kind of ["status 500", "network error"]) {
+        // The pins on screen just before this failure (after the first round's retry they are the panned view's pins).
+        await waitIdle(page, 800);
+        const titles0 = await worldTitles(page);
+        await page.$$eval(`${W} .maplibregl-marker[aria-label]`, (ms) => ms.forEach((m) => (m.dataset.keep = "1")));
         mock.pinPlan.push(kind === "status 500" ? { status: 500 } : { abort: true });
         const n0 = (await fetchLog(page)).length;
         await drag(page, kind === "status 500" ? -45 : 45, 0);

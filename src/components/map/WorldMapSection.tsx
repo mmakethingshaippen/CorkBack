@@ -13,6 +13,9 @@ import { useDelayedFlag } from "@/lib/useDelayedFlag";
 // region; the map then fits the returned pins once. Starting on one region showed
 // "0 postings in view" wherever that region had no postings.
 const WORLD_START: { center: [number, number]; zoom: number } = { center: [-30, 25], zoom: 1 };
+// Until the map has fitted to its first pins, ask for the whole world whatever the screen
+// width (a phone at zoom 1 sees only about 125 degrees of longitude). Still capped at 300.
+const WHOLE_WORLD: Bounds = { west: -180, south: -85, east: 180, north: 85 };
 
 const UPDATING_DELAY_MS = 300;
 
@@ -29,10 +32,11 @@ export function WorldMapSection({
   onClearCategory: () => void;
 }) {
   const [bounds, setBounds] = useState<Bounds | null>(null);
+  const [fitted, setFitted] = useState(false);
   const result = useMapPostings<Posting>({
     mode: "pins",
     category,
-    bounds,
+    bounds: fitted ? bounds : WHOLE_WORLD,
     debounceMs: WORLD_MAP_DEBOUNCE_MS,
   });
   const updating = useDelayedFlag(result.status === "loading", UPDATING_DELAY_MS);
@@ -47,7 +51,7 @@ export function WorldMapSection({
         {caption}
       </h2>
       <div className="relative h-64 overflow-hidden rounded-card border border-board">
-        <MapView postings={result.items} onBoundsChange={setBounds} initialView={WORLD_START} />
+        <MapView postings={result.items} onBoundsChange={setBounds} initialView={WORLD_START} onFirstFit={() => setFitted(true)} />
         {updating ? (
           <p className="absolute left-2 top-2 z-10 rounded-control bg-paper/90 px-2 py-1 text-sm text-ink shadow-md" role="status">
             Updating…
