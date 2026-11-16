@@ -7,5 +7,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // fast-check properties run hundreds of cases; 5 s (the default) is too tight on a busy machine.
+    testTimeout: 30000,
   },
 });

@@ -50,8 +50,11 @@ function readBounds(map: maplibregl.Map): Bounds {
 export function MapView({
   postings,
   onBoundsChange,
+  initialView,
 }: {
   postings: Posting[];
+  /** Starting camera when the map has no postings yet (the world map passes the whole world). */
+  initialView?: { center: [number, number]; zoom: number };
   /** Called after each moveend (and once when the map first loads). */
   onBoundsChange?: (bounds: Bounds) => void;
 }) {
@@ -63,6 +66,7 @@ export function MapView({
   const postingsRef = useRef(postings);
   const routerRef = useRef(router);
   const boundsCbRef = useRef(onBoundsChange);
+  const initialViewRef = useRef(initialView);
   postingsRef.current = postings;
   routerRef.current = router;
   boundsCbRef.current = onBoundsChange;
@@ -74,8 +78,8 @@ export function MapView({
     const map = new (maplibre().Map)({
       container: containerRef.current,
       style: STYLE,
-      center: first ? [first.lng, first.lat] : [-0.1035, 51.5465],
-      zoom: first ? 12 : 3,
+      center: first ? [first.lng, first.lat] : initialViewRef.current?.center ?? [-0.1035, 51.5465],
+      zoom: first ? 12 : initialViewRef.current?.zoom ?? 3,
       // No maxBounds: in MapLibre 6.17 it throws in resize() -> constrainInternal
       // on first layout. Reported bounds are clamped in readBounds() instead.
       minZoom: 1,

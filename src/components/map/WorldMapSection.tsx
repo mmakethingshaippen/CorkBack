@@ -9,6 +9,11 @@ import { worldCaption, worldEmptyText } from "@/lib/nearby";
 import { useMapPostings, WORLD_MAP_DEBOUNCE_MS } from "@/lib/useMapPostings";
 import { useDelayedFlag } from "@/lib/useDelayedFlag";
 
+// The world map opens on the whole world, so its first (capped) pin request covers every
+// region; the map then fits the returned pins once. Starting on one region showed
+// "0 postings in view" wherever that region had no postings.
+const WORLD_START: { center: [number, number]; zoom: number } = { center: [-30, 25], zoom: 1 };
+
 const UPDATING_DELAY_MS = 300;
 
 /**
@@ -42,7 +47,7 @@ export function WorldMapSection({
         {caption}
       </h2>
       <div className="relative h-64 overflow-hidden rounded-card border border-board">
-        <MapView postings={result.items} onBoundsChange={setBounds} />
+        <MapView postings={result.items} onBoundsChange={setBounds} initialView={WORLD_START} />
         {updating ? (
           <p className="absolute left-2 top-2 z-10 rounded-control bg-paper/90 px-2 py-1 text-sm text-ink shadow-md" role="status">
             Updating…

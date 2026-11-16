@@ -789,3 +789,18 @@ No server left running. Scratch builds `%TEMP%\cb_fin_seed` and `%TEMP%\cb_fin_m
 - **Release checklist:** `.kiro/specs/board-usability-improvements/release-checklist.md`. It has the exact SQL paths and order, the deferred stages, the live checks (with the real-phone ones separated), and the rollback steps.
   - Code rollback target: production deployment `dpl_ChvTDmc4xev6oJyoqjbqi5os4eaE` (`c71951a`).
   - Production SQL, the merge and the production deploy remain pending owner review.
+
+## Release 2026-11-16: board usability improvements on production
+
+- **Merge:** `main` was still `c71951a`; fast-forwarded to `168ab7e` (no conflicts) and pushed once. Vercel production `dpl_HENMGLhNWYWnNcNPSNC6LxQ2kkw7` built it, aliased to https://corkback.vercel.app.
+- **Production smoke test (Edge, 390x844 and 1280x800, synthetic `[TEST]` posting and two test accounts with Resend simulated-delivery addresses):**
+  - Board loads (200), map top 332 px on a phone, no horizontal scroll.
+  - Category filter: Community sent on both maps.
+  - Berkeley search: heading "Within 10 mi of Berkeley", `[TEST]` card "Under 0.5 mi away". Radius 5 changes the heading. Richmond search: "Within 10 mi of Richmond, California" with the Berkeley `[TEST]` card "About 6 mi away".
+  - Bounded map requests all 200; no location request without permission; signed-out unread asks once (401) then stops.
+  - Sign-in works; follow and unfollow Sales from the panel save and remove the row.
+  - Unread answered `{supported:false}` before stage 11 (no badge). The existing thread shows its messages, and a reply from B (real route) appeared in A's open thread in 6 s without reload, with `after` polling.
+- **Release regression found:** the world map opened on London at zoom 3 (MapView's default when it has no postings). Before this release it was handed every posting and fitted to them. On production, where the postings are in California, it showed "Explore the world · All categories · 0 postings in view". The caption itself was correct (a mojibake check in the smoke script was a harness bug).
+  - **Fix forward (small, not a rollback):** `MapView` takes an optional `initialView`, and `WorldMapSection` opens on the whole world (`center [-30, 25]`, zoom 1). The first capped pin request then covers every region, and the existing fit-once logic zooms to the returned pins, as before the release. Test: `worldStartView.test.ts`.
+  - Harness: `stage4.mjs` S and D3 now expect "exactly the pins the last response returned for the visible view" and a caption count equal to the pins inside the map. On a wide screen the whole-world view also holds the Berkeley fixtures.
+  - Checks: typecheck, lint, `npm test` 67 files / 539 tests. `vitest.config.ts` `testTimeout: 30000`: three property tests had timed out at the 5 s default on a busy machine, with no counterexamples. Seed-mode build; Edge stage4 156/156, stage2 150/150, stage1 57/57.

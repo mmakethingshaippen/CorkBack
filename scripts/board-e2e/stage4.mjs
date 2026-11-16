@@ -360,14 +360,24 @@ try {
       const { page, errors, context, mock, net } = await start(DATA);
       const allWorld = WORLD.map((p) => p.title);
       const allLocal = LOCAL.map((p) => p.title);
+      // The world map opens on the whole world, so on a wide screen its view can also hold the
+      // "local" fixtures. Expected world pins = what the last pins response returned for its view.
+      const lastPinsTitles = () => ([...mock.log].reverse().find((r) => r.mode === "pins" && r.outcome === "ok")?.titles ?? []);
+      const incl = (big, small) => small.every((x) => big.includes(x));
+      const capOk = async (label, text) => {
+        const m = new RegExp("^Explore the world " + MID + " " + label + " " + MID + " (\\d+) postings? in view$").exec(text ?? "");
+        const v = await worldPinsInView(page);
+        return { ok: !!m && Number(m[1]) >= v.min && Number(m[1]) <= v.max, n: m ? Number(m[1]) : null, inView: v };
+      };
       const maps0 = await page.evaluate(() => document.querySelectorAll(".maplibregl-map").length);
       const el0 = await page.evaluate((W) => { const e = document.querySelector(`${W} .maplibregl-map`); window.__worldEl = e; return !!e; }, W);
       const wt0 = await worldTitles(page);
       const lt0 = await localTitles(page);
       checks.push(c("S baseline: two map instances on the page (.maplibregl-map count)", maps0 === 2 && el0, { maps0 }));
-      checks.push(c("S baseline (All categories): world map draws every world fixture and local map every nearby fixture", same(wt0, allWorld) && same(lt0, allLocal), { world: wt0, local: lt0 }));
+      checks.push(c("S baseline (All categories): world map draws exactly the returned pins (every world fixture included) and local map every nearby fixture", same(wt0, lastPinsTitles()) && incl(wt0, allWorld) && same(lt0, allLocal), { world: wt0, local: lt0 }));
       const cap0 = await caption(page);
-      checks.push(c(`S baseline caption is exactly "Explore the world ${MID} All categories ${MID} ${WORLD.length} postings in view"`, cap0 === `Explore the world ${MID} All categories ${MID} ${WORLD.length} postings in view`, { cap0 }));
+      const k0 = await capOk("All categories", cap0);
+      checks.push(c("S baseline caption is 'Explore the world " + MID + " All categories " + MID + " {n} postings in view' with n = pins inside the visible map", k0.ok, { cap0, ...k0 }));
       await scrollWorldIntoView(page);
       await shot(page, `stage4-${vp}-S-all`);
 
@@ -381,14 +391,15 @@ try {
       const localSportsT = LOCAL.filter((p) => p.categorySlug === "sports").map((p) => p.title);
       const wt1 = await worldTitles(page);
       const lt1 = await localTitles(page);
-      checks.push(c("S Sports: world map shows only Sports pins, no Community pin (Req 14.2)", same(wt1, sportsT) && !wt1.some((t) => /Community/.test(t)), { world: wt1 }));
+      checks.push(c("S Sports: world map shows only Sports pins (all world Sports fixtures), no Community pin (Req 14.2)", same(wt1, lastPinsTitles()) && incl(wt1, sportsT) && wt1.every((t) => /Sports/.test(t)), { world: wt1 }));
       checks.push(c("S Sports: local map shows only Sports pins, no Community pin (Req 14.2)", same(lt1, localSportsT) && !lt1.some((t) => /Community/.test(t)), { local: lt1 }));
       const pinReqs = reqs.filter((r) => r.mode === "pins");
       const cardReqs = reqs.filter((r) => r.mode === "cards");
       checks.push(c("S Sports: every world request after the change carries category=sports and the last one returned only Sports (Req 14.1)", pinReqs.length > 0 && pinReqs.every((r) => r.category === "sports"), pinReqs.map((r) => r.search)));
       checks.push(c("S Sports: every local request after the change carries category=sports (Req 14.1)", cardReqs.length > 0 && cardReqs.every((r) => r.category === "sports"), cardReqs.map((r) => r.search)));
       const cap1 = await caption(page);
-      checks.push(c(`S Sports caption is exactly "Explore the world ${MID} Sports ${MID} 2 postings in view" (Req 14.4)`, cap1 === `Explore the world ${MID} Sports ${MID} 2 postings in view`, { cap1 }));
+      const k1 = await capOk("Sports", cap1);
+      checks.push(c("S Sports caption is 'Explore the world " + MID + " Sports " + MID + " {n} postings in view' with n = Sports pins inside the visible map (Req 14.4)", k1.ok, { cap1, ...k1 }));
       await shot(page, `stage4-${vp}-S-sports`);
 
       // --- Classes: singular
@@ -427,8 +438,9 @@ try {
       checks.push(c("S Show all categories: local request has no category afterwards (Req 14.7)", !!lastCards && lastCards.category === null && after.filter((r) => r.mode === "cards").every((r) => r.category === null), after.filter((r) => r.mode === "cards").map((r) => r.search)));
       const wt4 = await worldTitles(page);
       const lt4 = await localTitles(page);
-      checks.push(c("S Show all categories: both maps show every category again", same(wt4, allWorld) && same(lt4, allLocal), { world: wt4, local: lt4 }));
-      checks.push(c(`S caption back to "Explore the world ${MID} All categories ${MID} ${WORLD.length} postings in view"`, (await caption(page)) === `Explore the world ${MID} All categories ${MID} ${WORLD.length} postings in view`, await caption(page)));
+      checks.push(c("S Show all categories: both maps show every category again", same(wt4, lastPinsTitles()) && incl(wt4, allWorld) && same(lt4, allLocal), { world: wt4, local: lt4 }));
+      const k4 = await capOk("All categories", await caption(page));
+      checks.push(c("S caption back to 'Explore the world " + MID + " All categories " + MID + " {n} postings in view'", k4.ok, { cap: await caption(page), ...k4 }));
 
       // --- one world map instance across all of the above (Req 15.1)
       const inst = await page.evaluate((W) => ({
@@ -590,8 +602,13 @@ try {
       const wt = await worldTitles(page);
       const sportsT = WORLD.filter((p) => p.categorySlug === "sports").map((p) => p.title);
       checks.push(c(`D3 the old-category response ${delivered ? "arrived after the change and was discarded" : "did not arrive between the change and the new request (stale path not exercised)"}: its pin never appeared, no error, no retry (Req 14.3)`, !ui.some((u) => u.stale || u.retry || u.err), { delivered, r1: r1 && { outcome: r1.outcome, abortedAt: r1.abortedAt }, staleSeen: ui.filter((u) => u.stale).length }));
-      checks.push(c("D3 final world pins are exactly the Sports pins", same(wt, sportsT), { wt }));
-      checks.push(c(`D3 final caption is "Explore the world ${MID} Sports ${MID} 2 postings in view"`, (await caption(page)) === `Explore the world ${MID} Sports ${MID} 2 postings in view`, await caption(page)));
+      // The world map opens on the whole world, so on a wide screen the Sports view can also hold the local Sports fixtures.
+      const lastSports = [...mock.log].reverse().find((r) => r.mode === "pins" && r.category === "sports" && r.outcome === "ok")?.titles ?? [];
+      checks.push(c("D3 final world pins are exactly the last Sports response (every world Sports fixture, only Sports, no stale pin)", same(wt, lastSports) && sportsT.every((x) => wt.includes(x)) && wt.every((x) => /Sports/.test(x)), { wt }));
+      const capD3 = await caption(page);
+      const mD3 = new RegExp("^Explore the world " + MID + " Sports " + MID + " (\\d+) postings? in view$").exec(capD3 ?? "");
+      const vD3 = await worldPinsInView(page);
+      checks.push(c("D3 final caption is 'Explore the world " + MID + " Sports " + MID + " {n} postings in view' with n = Sports pins inside the visible map", !!mD3 && Number(mD3[1]) >= vD3.min && Number(mD3[1]) <= vD3.max, { capD3, vD3 }));
       notes.D3 = { staleResponseDelivered: delivered, r1: r1 && { outcome: r1.outcome, settledAfterStartMs: r1.settledAt && Math.round(r1.settledAt - r1.t0), abortedAfterStartMs: r1.abortedAt && Math.round(r1.abortedAt - r1.t0) }, categoryChangeAtMs: changeRec && r1 ? Math.round(changeRec.t0 - r1.t0) : null, newWorldRequestAtMs: sportsRec && r1 ? Math.round(sportsRec.t0 - r1.t0) : null };
       checks.push(c("D3 no uncaught page errors", errors.length === 0, errors));
       await context.close();
