@@ -99,3 +99,28 @@ Two draft bugs were found and fixed in `stage11_message_reads_verify_roles.sql`:
 SELECT on `messages` and `message_threads`, but Supabase's default privileges give `anon` SELECT (RLS denies the rows), so it now
 checks only INSERT, UPDATE and DELETE; and V7, V9 and V10 read the stored marker in the same SQL statement that wrote it,
 so the sub-select used the old snapshot, and the mark now runs in its own statement first.
+
+## twoaccount.mjs (stage 11 with two accounts and thread auto-refresh)
+
+`$env:CB_ISO_DIR = "$env:TEMP\cb-iso"; node supabase\isolated-test\twoaccount.mjs`
+
+This is a local run only: embedded PostgreSQL 17 and PostgREST 14.18 on this machine, with no Next.js server, Supabase Auth or browser. It applies the production chain and then the stage 11 preflight, migration and verify_roles files. Synthetic users `iso_alex` and `iso_blair` (plus `iso_casey` as a third user) talk to PostgREST with their own JWTs.
+
+What it reuses from the app:
+- The shipped client logic: `createPoller`, `mergeMessages` and the `unread.ts` helpers, transpiled in memory.
+- The route database calls and ThreadView's run and mark-read logic, copied from those files.
+
+What it covers:
+- The backfill.
+- Unread counts and badge text.
+- First load without `after`, then cursor polls.
+- Auto-refresh in both directions.
+- Unread clearing.
+- The hidden-tab pause.
+- Same-timestamp and same-millisecond messages.
+- Third-user and anonymous denial.
+- Marker monotonicity and the server-time clamp.
+- No overlapping requests.
+- Rollback: unread answers `{ supported: false }` and messages are unchanged.
+
+Result on 2026-11-16: 30 passed, 0 failed. It found a precision bug in `advanceMarker` and `unreadCount`, which compared timestamps at millisecond precision while Postgres stores microseconds. The bug is fixed in `src/lib/unread.ts` and covered by `unread.micro.test.ts`.

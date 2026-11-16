@@ -752,3 +752,40 @@ No server left running. Scratch builds `%TEMP%\cb_fin_seed` and `%TEMP%\cb_fin_m
 - **Still blocked until staging exists:** sign-in and category follow/unfollow; two-account message auto-refresh; unread indicators clearing (needs stage11 applied to staging); listing creation and editing; Community with and without a date; listing alert emails to test accounts only.
 - **Setup notes for later:** a Preview-scoped, branch-scoped Supabase URL and keys (never the production values); a Preview-scoped Resend key and `ALERTS_FROM_EMAIL`, plus test-account addresses that can receive or simulate delivery (`@corkback-test.invalid` cannot receive mail); a Preview `CRON_SECRET` to trigger the alert job by hand; staging Auth site and redirect URLs for the preview domain; and either a Vercel login or a "Protection Bypass for Automation" secret, so the browser harness can reach the protected preview.
 - **Real-phone checks (needed with or without staging):** background-tab pause of an open thread; "Use my location" distances and the radius ring; automatic location where permission was already granted, and no prompt in a fresh browser; touch use of the category panel, radius control and world-map pan.
+
+## Board usability improvements: local two-account stage 11 check and release checklist (2026-11-16)
+
+- **Scope (owner):** the preview stays in demo mode. No staging project, no pausing `launchpad`, no plan change, no production connection. Everything below is **local only**: embedded PostgreSQL 17 plus PostgREST 14.18 on this machine, plus local production builds in real Edge with mocked APIs. It is **not** a hosted-preview test: no Vercel, no Supabase Auth, no real browsers talking to a real database.
+- **New `supabase/isolated-test/twoaccount.mjs`: 30 passed, 0 failed.** It covers stage 11 applied in the documented order (preflight, migration, verify_roles `ALL CHECKS PASS`) and two synthetic accounts with their own JWTs through PostgREST. It uses the shipped poller, merge and unread code, and copies the route and ThreadView database calls.
+  - Pre-stage-11 history is backfilled as read.
+  - Two messages from A give B "2" and "Messages, 2 unread"; A's own messages never count.
+  - B's first load has no cursor; later polls send the exact `created_at` string.
+  - A's new message appears in B's open thread in 0.8 s; B's reply appears in A's in 0.2 s; no duplicates.
+  - Unread clears for both after their open tabs mark read.
+  - A hidden tab makes no requests; it shows 1 unread, then clears on return.
+  - Same-timestamp messages are shown once.
+  - A third user and anonymous are refused.
+  - An earlier marker never lowers the stored one; a future marker is clamped to server time.
+  - At most one request is in flight per tab.
+  - After rollback, unread answers `{ supported: false }` and messages are unchanged.
+- **Bug found and fixed:** `advanceMarker` and `unreadCount` in `src/lib/unread.ts` compared timestamps with `Date.parse`, which keeps milliseconds only. Postgres compares `created_at > marker` in microseconds.
+  - Effect: a message from the other person in the same millisecond as the last mark, but later in microseconds, was shown yet never marked read, so the badge stuck at 1.
+  - Fix: microsecond comparison with `compareInstants` and `parseInstantMicros`.
+  - Tests: `unread.micro.test.ts`, 5 tests including a 500-run property.
+- **Re-runs after the fix:**
+  - typecheck and lint pass.
+  - `npm test`: 66 files, 537 tests.
+  - `messagereads.mjs`: 67/67.
+  - Mock-Supabase scratch build; Edge `stage5b.mjs` 128 checks and `stage5a.mjs` 120 checks, 0 failed at 390x844 and 1280x800.
+  - Earlier results for stages 1 to 4, geoindex, avatars, run.mjs and takedown stand, since that code is unchanged.
+- **Not verified anywhere yet (needs production after release, or a staging project):**
+  - Supabase Auth sign-in and the session cookie.
+  - Category follow and unfollow while signed in.
+  - Two real browsers on a hosted deployment.
+  - Real geocoder results.
+  - The world map on real tiles and data.
+  - Real listing and Community publishing and editing.
+  - Real alert emails.
+- **Release checklist:** `.kiro/specs/board-usability-improvements/release-checklist.md`. It has the exact SQL paths and order, the deferred stages, the live checks (with the real-phone ones separated), and the rollback steps.
+  - Code rollback target: production deployment `dpl_ChvTDmc4xev6oJyoqjbqi5os4eaE` (`c71951a`).
+  - Production SQL, the merge and the production deploy remain pending owner review.

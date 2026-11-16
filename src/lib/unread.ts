@@ -10,17 +10,39 @@ export interface UnreadMessage {
 }
 
 /** Number of messages that are unread for `viewerId` given `marker` (raw created_at or null). */
+/**
+ * A timestamp as [epoch milliseconds, extra microseconds 0-999], or null when it
+ * cannot be read. Postgres stores microseconds and compares created_at > marker
+ * at that precision; Date.parse keeps only milliseconds, so two instants in the
+ * same millisecond would otherwise look equal and a newer message would never be
+ * marked read.
+ */
+export function parseInstantMicros(s: string | null | undefined): [number, number] | null {
+  if (!s) return null;
+  const ms = Date.parse(s);
+  if (Number.isNaN(ms)) return null;
+  const frac = /T\d{2}:\d{2}:\d{2}\.(\d+)/.exec(s);
+  const extra = frac ? Number((frac[1] + "000000").slice(3, 6)) : 0;
+  return [ms, extra];
+}
+
+/** Sign of a - b at microsecond precision; NaN when either side cannot be read. */
+export function compareInstants(a: string | null | undefined, b: string | null | undefined): number {
+  const x = parseInstantMicros(a), y = parseInstantMicros(b);
+  if (!x || !y) return Number.NaN;
+  return Math.sign(x[0] - y[0] || x[1] - y[1]);
+}
+
 export function unreadCount(
   messages: readonly UnreadMessage[],
   viewerId: string,
   marker: string | null | undefined,
 ): number {
-  const markerMs = marker ? Date.parse(marker) : Number.NaN;
-  const hasMarker = !Number.isNaN(markerMs);
+  const hasMarker = parseInstantMicros(marker) !== null;
   let n = 0;
   for (const m of messages) {
     if (m.sender_id === viewerId) continue;
-    if (!hasMarker || Date.parse(m.created_at) > markerMs) n += 1;
+    if (!hasMarker || compareInstants(m.created_at, marker) > 0) n += 1;
   }
   return n;
 }
@@ -31,11 +53,9 @@ export function advanceMarker(
   upTo: string,
 ): string {
   if (!current) return upTo;
-  const c = Date.parse(current);
-  const u = Date.parse(upTo);
-  if (Number.isNaN(u)) return current;
-  if (Number.isNaN(c)) return upTo;
-  return u > c ? upTo : current;
+  if (!parseInstantMicros(upTo)) return current;
+  if (!parseInstantMicros(current)) return upTo;
+  return compareInstants(upTo, current) > 0 ? upTo : current;
 }
 
 /** Sum of per-thread counts. Ignores non-finite and negative values. */
