@@ -4,52 +4,125 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { NavyLink } from "@/components/ui/actions";
 import { useMessageComposer } from "@/components/ui/useMessageComposer";
 import { mergeMessages, type ThreadMessage } from "@/lib/messaging";
+import { advanceMarker } from "@/lib/unread";
+import { UNREAD_CHANGED_EVENT } from "@/components/ui/useUnreadCount";
+import { createPoller, type PollOutcome, type Poller } from "@/lib/messagePolling";
 
 /**
  * A private conversation. Participants only (the page 404s for anyone else,
  * and RLS returns nothing to them).
  *
- * How it updates (no real-time push): messages load when the page opens, after
- * you send, when the tab regains focus or becomes visible, and when you press
- * "Check for new messages". Messages are shown oldest first by server time.
+ * How it updates (no real-time push): a poller fetches messages newer than the
+ * latest shown, and is poked on focus, visibility, send and the "Check" button.
+ * Messages are shown oldest first by server time.
  */
 export function ThreadView({ threadId, viewerId, otherHandle }: { threadId: string; viewerId: string; otherHandle: string }) {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [phase, setPhase] = useState<"loading" | "ready" | "error" | "signed_out">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
   const c = useMessageComposer(`cb.draft.thread.${threadId}`);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
-    setChecking(true);
-    try {
-      const res = await fetch(`/api/messages?threadId=${encodeURIComponent(threadId)}`, { cache: "no-store" });
-      const data = (await res.json().catch(() => ({}))) as { messages?: ThreadMessage[]; error?: string; code?: string };
-      if (res.status === 401) { setPhase("signed_out"); return; }
-      if (!res.ok) { setLoadError(data.error ?? "Couldn't load messages."); setPhase((p) => (p === "ready" ? "ready" : "error")); return; }
-      setMessages((cur) => mergeMessages(cur, data.messages ?? []));
-      setLoadError(null);
-      setPhase("ready");
-      setLastChecked(new Date());
-    } catch {
-      setLoadError("Couldn't reach CorkBack. Check your connection.");
-      setPhase((p) => (p === "ready" ? "ready" : "error"));
-    } finally {
-      setChecking(false);
-    }
-  }, [threadId]);
+  const messagesRef = useRef<ThreadMessage[]>([]);
+  const pollerRef = useRef<Poller | null>(null);
+  const readyRef = useRef(false);
+  const markedRef = useRef<string | null>(null); // newest upTo already sent
+  const markingRef = useRef(false);
 
-  useEffect(() => { load(); }, [load]);
+  const applyMessages = useCallback((incoming: ThreadMessage[]) => {
+    const merged = mergeMessages(messagesRef.current, incoming);
+    messagesRef.current = merged;
+    setMessages(merged);
+  }, []);
+
+  const markRead = useCallback(async () => {
+    if (document.visibilityState === "hidden" || markingRef.current) return;
+    let newest: string | null = null;
+    for (const m of messagesRef.current) {
+      if (m.sender_id !== viewerId && (!newest || advanceMarker(newest, m.created_at) !== newest)) newest = m.created_at;
+    }
+    if (!newest || advanceMarker(markedRef.current, newest) === markedRef.current) return;
+    markingRef.current = true;
+    try {
+      const res = await fetch("/api/messages/read", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ threadId, upTo: newest }),
+      });
+      if (res.ok) {
+        markedRef.current = advanceMarker(markedRef.current, newest);
+        window.dispatchEvent(new Event(UNREAD_CHANGED_EVENT));
+      }
+    } catch {
+      // retried after the next successful poll
+    } finally {
+      markingRef.current = false;
+    }
+  }, [threadId, viewerId]);
+
   useEffect(() => {
-    const onFocus = () => load();
-    const onVisible = () => { if (document.visibilityState === "visible") load(); };
+    const poller = createPoller({
+      run: async (): Promise<PollOutcome> => {
+        setChecking(true);
+        try {
+          const cur = messagesRef.current;
+          const newest = cur.length ? cur[cur.length - 1].created_at : null;
+          const qs = `threadId=${encodeURIComponent(threadId)}` + (newest ? `&after=${encodeURIComponent(newest)}` : "");
+          const res = await fetch(`/api/messages?${qs}`, { cache: "no-store" });
+          const data = (await res.json().catch(() => ({}))) as { messages?: ThreadMessage[]; error?: string };
+          if (res.status === 401) { setPhase("signed_out"); return { kind: "stop" }; }
+          if (res.status === 404) {
+            setLoadError(data.error ?? "This conversation couldn't be found.");
+            setReconnecting(false);
+            setPhase("error");
+            return { kind: "stop" };
+          }
+          if (!res.ok) throw new Error("load failed");
+          const known = new Set(messagesRef.current.map((m) => m.id));
+          const incoming = data.messages ?? [];
+          const added = incoming.filter((m) => !known.has(m.id)).length;
+          applyMessages(incoming);
+          readyRef.current = true;
+          setLoadError(null);
+          setReconnecting(false);
+          setPhase("ready");
+          void markRead();
+          return { kind: "ok", added };
+        } catch {
+          if (readyRef.current) setReconnecting(true);
+          else { setLoadError("Couldn't load messages. Check your connection."); setPhase("error"); }
+          return { kind: "retry" };
+        } finally {
+          setChecking(false);
+        }
+      },
+      isHidden: () => document.visibilityState === "hidden",
+      now: () => Date.now(),
+      setTimer: (fn, ms) => window.setTimeout(fn, ms),
+      clearTimer: (h) => window.clearTimeout(h as number),
+      random: () => Math.random(),
+    });
+    pollerRef.current = poller;
+    poller.start();
+    poller.poke();
+    const onFocus = () => poller.poke();
+    const onVisible = () => { if (document.visibilityState === "visible") { poller.poke(); void markRead(); } };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
-    return () => { window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onVisible); };
-  }, [load]);
-  useEffect(() => { endRef.current?.scrollIntoView({ block: "nearest" }); }, [messages.length]);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      poller.stop();
+      pollerRef.current = null;
+    };
+  }, [threadId, applyMessages, markRead]);
+
+  function checkNow() {
+    pollerRef.current?.start(); // no-op while running; restarts after a stop
+    pollerRef.current?.poke();
+  }  useEffect(() => { endRef.current?.scrollIntoView({ block: "nearest" }); }, [messages.length]);
 
   async function onReply(e: React.FormEvent) {
     e.preventDefault();
@@ -61,8 +134,8 @@ export function ThreadView({ threadId, viewerId, otherHandle }: { threadId: stri
       }),
     );
     if (data?.message) {
-      setMessages((cur) => mergeMessages(cur, [data.message]));
-      load(); // also picks up anything the other person sent meanwhile
+      applyMessages([data.message]);
+      pollerRef.current?.poke(); // also picks up anything the other person sent meanwhile
     }
   }
 
@@ -79,7 +152,7 @@ export function ThreadView({ threadId, viewerId, otherHandle }: { threadId: stri
       <div role="alert" className="space-y-2 rounded-card border-2 border-dark-red bg-white p-4 text-sm">
         <p className="font-bold text-ink">This conversation couldn&apos;t load.</p>
         <p className="text-ink/70">{loadError}</p>
-        <button type="button" onClick={() => { setPhase("loading"); load(); }} className="rounded-control border-2 border-deep-navy px-4 py-1.5 font-bold text-deep-navy">
+        <button type="button" onClick={() => { setPhase("loading"); checkNow(); }} className="rounded-control border-2 border-deep-navy px-4 py-1.5 font-bold text-deep-navy">
           Try again
         </button>
       </div>
@@ -113,14 +186,12 @@ export function ThreadView({ threadId, viewerId, otherHandle }: { threadId: stri
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink/60">
-        <span>
-          Updates when you open or return to this page, or check below.{" "}
-          {lastChecked ? <>Last checked <time dateTime={lastChecked.toISOString()}>{lastChecked.toLocaleTimeString()}</time>.</> : null}
-        </span>
-        <button type="button" onClick={load} aria-disabled={checking} className="font-bold text-deep-navy underline-offset-2 hover:underline">
+        <span>Updates automatically while this page is open.</span>
+        <button type="button" onClick={checkNow} aria-disabled={checking} className="font-bold text-deep-navy underline-offset-2 hover:underline">
           {checking ? "Checking…" : "Check for new messages"}
         </button>
       </div>
+      {reconnecting ? <p role="status" className="text-sm text-ink/70">Reconnecting…</p> : null}
       {loadError ? <p role="alert" className="text-sm text-dark-red">{loadError}</p> : null}
 
       <form onSubmit={onReply} className="space-y-2" aria-busy={c.sending}>

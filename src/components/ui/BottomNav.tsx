@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { badgeText, messagesAriaLabel } from "@/lib/unread";
+import { useUnreadCount } from "@/components/ui/useUnreadCount";
 import { MapIcon, LayersIcon, ScanLineIcon, UsersIcon, BellIcon, MessageCircleIcon } from "@/components/icons";
 
 /**
@@ -20,6 +22,9 @@ const items = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const unread = useUnreadCount();
+  const total = unread?.total ?? 0;
+  const badge = badgeText(total);
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-board bg-paper">
       <ul className="mx-auto flex max-w-xl items-end justify-between px-4 py-2">
@@ -37,13 +42,20 @@ export function BottomNav() {
               </li>
             );
           }
+          const isMessages = href === "/inbox";
           return (
             <li key={href}>
               <Link
                 href={href}
-                className={`flex flex-col items-center gap-1 ${active ? "text-dark-red" : "text-ink/70"}`}
+                aria-label={isMessages ? messagesAriaLabel(total) : undefined}
+                className={`relative flex flex-col items-center gap-1 ${active ? "text-dark-red" : "text-ink/70"}`}
               >
                 <Icon className="text-xl" />
+                {isMessages && badge ? (
+                  <span aria-hidden="true" className="absolute -right-3 -top-1 min-w-[1.1rem] rounded-full bg-dark-red px-1 text-center text-[11px] font-bold leading-[1.1rem] text-white">
+                    {badge}
+                  </span>
+                ) : null}
                 <span className="text-xs">{label}</span>
               </Link>
             </li>

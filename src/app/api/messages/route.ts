@@ -86,19 +86,21 @@ export async function GET(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) return fail(401, "signed_out", "Your session has ended. Sign in again to read messages.");
 
-  const threadId = new URL(req.url).searchParams.get("threadId");
+  const params = new URL(req.url).searchParams;
+  const threadId = params.get("threadId");
   if (!isUuid(threadId)) return fail(404, "not_found", "Conversation not found.");
+
+  // Optional cursor: only messages at or after this created_at (inclusive; the client dedupes).
+  const after = params.get("after");
+  if (after !== null && (after.length > 40 || Number.isNaN(Date.parse(after)))) return fail(400, "invalid", "Invalid request.");
 
   // RLS returns the thread only to a participant.
   const { data: thread } = await supabase.from("message_threads").select("id").eq("id", threadId).maybeSingle();
   if (!thread) return fail(404, "not_found", "Conversation not found.");
 
-  const { data, error } = await supabase
-    .from("messages")
-    .select("id, sender_id, body, created_at")
-    .eq("thread_id", threadId)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true });
+  let query = supabase.from("messages").select("id, sender_id, body, created_at").eq("thread_id", threadId);
+  if (after !== null) query = query.gte("created_at", after);
+  const { data, error } = await query.order("created_at", { ascending: true }).order("id", { ascending: true });
   if (error) return fail(500, "load_failed", "Couldn't load messages. Try again.");
   return NextResponse.json({ messages: data ?? [] });
 }

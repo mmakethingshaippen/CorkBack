@@ -13,7 +13,7 @@ import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
  * object (as Supabase returns) gives an unreadable "Unhandled Runtime Error" in
  * the browser; a real Error with a clear message renders properly.
  */
-function toReadableError(context: string, error: PostgrestError): Error {
+export function toReadableError(context: string, error: PostgrestError): Error {
   // Structured server-side log so the real cause is visible in the terminal.
   console.error(`[CorkBack] Supabase error during ${context}:`, {
     code: error.code,
@@ -45,7 +45,7 @@ function toReadableError(context: string, error: PostgrestError): Error {
  * seed data so the app is verifiable live during the build.
  */
 
-function supabaseConfigured(): boolean {
+export function supabaseConfigured(): boolean {
   return Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -56,10 +56,10 @@ function supabaseConfigured(): boolean {
 // through several relationships (author_id, likes, plans, hidden_postings), so
 // PostgREST needs the exact FK (PGRST201). Counts are NOT embedded: likes rows
 // are private, so counts come from posting_reaction_counts.
-const POSTING_COLUMNS =
+export const POSTING_COLUMNS =
   "id, title, body, flyer_url, rsvp_url, event_date, event_time, end_date, end_time, time_zone, place_label, lat, lng, expiry, expires_at, is_promoted, created_at, profiles!postings_author_id_fkey(username, avatar_path), categories(slug)";
 
-function rowToPosting(r: Record<string, unknown>): Posting {
+export function rowToPosting(r: Record<string, unknown>): Posting {
   const profiles = r.profiles as { username?: string; avatar_path?: string | null } | null;
   const categories = r.categories as { slug?: string } | null;
   return {
@@ -89,7 +89,7 @@ function rowToPosting(r: Record<string, unknown>): Posting {
   };
 }
 
-async function withCounts(supabase: SupabaseClient, postings: Posting[]): Promise<Posting[]> {
+export async function withCounts(supabase: SupabaseClient, postings: Posting[]): Promise<Posting[]> {
   const counts = await getReactionCounts(supabase, postings.map((p) => p.id));
   return postings.map((p) => {
     const c = counts.get(p.id);

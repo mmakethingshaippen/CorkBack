@@ -1,6 +1,49 @@
 import { CATEGORIES } from "./categories";
 import { EXPIRY_PRESETS, clampPinNudge, computeExpiresAt, type ExpiryPreset } from "./domain";
 import { FALLBACK_TIME_ZONE, eventEnd, isClockTime, isIsoDate, localDate, timeZoneForPin } from "./lifecycle";
+import { categoryKind } from "./postingKinds";
+
+const isBlank = (v: unknown) => v == null || v === "";
+
+/**
+ * Listing branch: only an optional `deadline`, stored as endDate. Shared by publish and edit.
+ * `tz` is the posting's own zone. Returns the deadline (or null) or an error.
+ */
+function checkListingDeadline(
+  r: Record<string, unknown>,
+  tz: string | null,
+  now: Date,
+): { ok: true; deadline: string | null } | { ok: false; error: string } {
+  if (!isBlank(r.eventDate) || !isBlank(r.eventTime) || !isBlank(r.endTime)) {
+    return { ok: false, error: "Listings use a deadline instead of an event date." };
+  }
+  if (isBlank(r.deadline)) return { ok: true, deadline: null };
+  if (!isIsoDate(r.deadline)) return { ok: false, error: "Deadline must be a date in the format YYYY-MM-DD." };
+  if (r.dateNeedsConfirmation === true && r.dateConfirmed !== true) {
+    return {
+      ok: false,
+      error: "The flyer did not show a year. Check the full event date, including the year, and confirm it.",
+    };
+  }
+  if (r.deadline < localDate(now, tz ?? FALLBACK_TIME_ZONE)) {
+    return { ok: false, error: "This deadline has already passed." };
+  }
+  return { ok: true, deadline: r.deadline };
+}
+
+/** Community branch pre-checks, shared by publish and edit. Event rules then apply as for events. */
+function checkCommunityFields(
+  r: Record<string, unknown>,
+  eventDate: string | null,
+  endDate: string | null,
+  endTime: string | null,
+): string | null {
+  if (!isBlank(r.deadline)) return "Community postings use an event date, not a deadline.";
+  if (!eventDate && (endDate || endTime || !isBlank(r.eventTime))) {
+    return "Add an event date first, or clear the time fields.";
+  }
+  return null;
+}
 
 export interface ValidatedPosting {
   title: string;
@@ -67,6 +110,33 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
   if (!rsvp.ok) return rsvp;
   const rsvpUrl = rsvp.value;
 
+  const kind = categoryKind(category.slug);
+  if (kind === "listing") {
+    const real0 = r.real as { lat: number; lng: number };
+    const pin0 = clampPinNudge(real0, (r.desired as { lat: number; lng: number } | null | undefined) ?? real0);
+    const tz0 = timeZoneForPin(pin0.lat, pin0.lng);
+    const d = checkListingDeadline(r, tz0, now);
+    if (!d.ok) return d;
+    return {
+      ok: true,
+      value: {
+        title: r.title.trim().slice(0, 140),
+        body: typeof r.body === "string" ? r.body : "",
+        categorySlug: category.slug,
+        rsvpUrl,
+        eventDate: null,
+        eventTime: null,
+        endDate: d.deadline,
+        endTime: null,
+        timeZone: tz0,
+        placeLabel: typeof r.placeLabel === "string" ? r.placeLabel : "",
+        expiry,
+        expiresAt: computeExpiresAt(now, expiry),
+        pin: pin0,
+      },
+    };
+  }
+
   let eventDate: string | null = null;
   if (r.eventDate != null && r.eventDate !== "") {
     if (!isIsoDate(r.eventDate)) {
@@ -92,6 +162,10 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
   if (r.endTime != null && r.endTime !== "") {
     if (!isClockTime(r.endTime)) return { ok: false, error: "End time must be HH:MM (24-hour)." };
     endTime = r.endTime.slice(0, 5);
+  }
+  if (kind === "event-optional") {
+    const e = checkCommunityFields(r, eventDate, endDate, endTime);
+    if (e) return { ok: false, error: e };
   }
   if ((endDate || endTime) && !eventDate) {
     return { ok: false, error: "Add the event date before an end date or time." };
@@ -175,6 +249,10 @@ export interface EditContext {
   timeZone: string | null;
   lat: number;
   lng: number;
+  /** Stored event fields; only used to stop an ended Community posting being revived by clearing its date. */
+  eventDate?: string | null;
+  endDate?: string | null;
+  endTime?: string | null;
 }
 
 export type EditValidationResult = { ok: true; value: ValidatedEdit } | { ok: false; error: string };
@@ -196,6 +274,26 @@ export function validatePostingEdit(b: unknown, ctx: EditContext, now: Date): Ed
   const rsvp = parseRsvpUrl(r.rsvpUrl);
   if (!rsvp.ok) return rsvp;
 
+  const kind = categoryKind(category.slug);
+  if (kind === "listing") {
+    const d = checkListingDeadline(r, ctx.timeZone, now);
+    if (!d.ok) return d;
+    return {
+      ok: true,
+      value: {
+        title: r.title.trim().slice(0, 140),
+        body: typeof r.body === "string" ? r.body : "",
+        categorySlug: category.slug,
+        rsvpUrl: rsvp.value,
+        eventDate: null,
+        eventTime: null,
+        endDate: d.deadline,
+        endTime: null,
+        placeLabel: typeof r.placeLabel === "string" ? r.placeLabel : "",
+      },
+    };
+  }
+
   let eventDate: string | null = null;
   if (r.eventDate != null && r.eventDate !== "") {
     if (!isIsoDate(r.eventDate)) return { ok: false, error: "Event date must be YYYY-MM-DD." };
@@ -210,6 +308,16 @@ export function validatePostingEdit(b: unknown, ctx: EditContext, now: Date): Ed
   if (r.endTime != null && r.endTime !== "") {
     if (!isClockTime(r.endTime)) return { ok: false, error: "End time must be HH:MM (24-hour)." };
     endTime = r.endTime.slice(0, 5);
+  }
+  if (kind === "event-optional") {
+    const e = checkCommunityFields(r, eventDate, endDate, endTime);
+    if (e) return { ok: false, error: e };
+    if (!eventDate && (ctx.eventDate || ctx.endDate)) {
+      const storedEnd = eventEnd({ expiresAt: ctx.expiresAt, eventDate: ctx.eventDate ?? null, endDate: ctx.endDate, endTime: ctx.endTime, timeZone: ctx.timeZone, lat: ctx.lat, lng: ctx.lng });
+      if (storedEnd && storedEnd.getTime() <= now.getTime()) {
+        return { ok: false, error: "This posting has ended. Clearing its date would put it back on the board." };
+      }
+    }
   }
   if ((endDate || endTime) && !eventDate) return { ok: false, error: "Add the event date before an end date or time." };
   if (endDate && eventDate && endDate < eventDate) return { ok: false, error: "The end date is before the event date." };

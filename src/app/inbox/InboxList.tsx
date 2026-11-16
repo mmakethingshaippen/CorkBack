@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { NavyLink } from "@/components/ui/actions";
 import { Avatar } from "@/components/ui/Avatar";
+import { useUnreadCount } from "@/components/ui/useUnreadCount";
 
 interface ThreadRow {
   id: string;
@@ -20,6 +21,7 @@ interface ThreadRow {
  * tab regains focus; there is no real-time push.
  */
 export function InboxList() {
+  const unread = useUnreadCount();
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [phase, setPhase] = useState<"loading" | "ready" | "error" | "signed_out">("loading");
   const [error, setError] = useState<string | null>(null);
@@ -70,11 +72,13 @@ export function InboxList() {
 
   return (
     <ul className="space-y-3" aria-label="Your conversations">
-      {threads.map((t) => (
+      {threads.map((t) => {
+        const isUnread = (unread?.byThread[t.id] ?? 0) >= 1;
+        return (
         <li key={t.id}>
           <Link href={`/inbox/${t.id}`} className="block rounded-card border border-board bg-card p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="flex min-w-0 items-center gap-2 font-bold text-deep-navy"><Avatar username={t.otherHandle} path={t.otherAvatarPath ?? null} size={28} /><span className="truncate">@{t.otherHandle}</span></span>
+              <span className={`flex min-w-0 items-center gap-2 text-deep-navy ${isUnread ? "font-extrabold" : "font-bold"}`}>{isUnread ? <><span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full bg-dark-red" /><span className="sr-only">Unread</span></> : null}<Avatar username={t.otherHandle} path={t.otherAvatarPath ?? null} size={28} /><span className="truncate">@{t.otherHandle}</span></span>
               <time dateTime={t.lastAt} className="shrink-0 text-xs text-ink/50">{new Date(t.lastAt).toLocaleDateString()}</time>
             </div>
             {t.postingTitle ? <p className="truncate text-xs text-ink/60">About: {t.postingTitle}</p> : null}
@@ -86,7 +90,8 @@ export function InboxList() {
             ) : null}
           </Link>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Field, TextAreaField } from "@/components/ui/Field";
 import { CategoryChip } from "@/components/ui/CategoryChip";
 import { CATEGORIES } from "@/lib/categories";
-import { EXPIRY_PRESETS, type ExpiryPreset } from "@/lib/domain";
+import { EXPIRY_PRESETS, computeExpiresAt, type ExpiryPreset } from "@/lib/domain";
+import { isIsoDate, timeZoneForPin } from "@/lib/lifecycle";
+import { fieldSpec } from "@/lib/postingKinds";
+import { TAKEDOWN_ZONE_NOTE, takedownLine } from "@/lib/takedownLine";
 import type { ExtractedFlyer } from "@/lib/types";
 
 const PRESET_LABEL: Record<ExpiryPreset, string> = {
@@ -30,6 +33,10 @@ export function ReviewForm() {
   const [eventTime, setEventTime] = useState("");
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
+  // Listing Deadline. Pre-filled from a readable scanned date, clearable.
+  const [deadline, setDeadline] = useState("");
+  // Set after mount (never during render) so the takedown preview is stable.
+  const [now, setNow] = useState<Date | null>(null);
   // A scanned date whose year was not printed on the flyer is uncertain: the
   // poster must confirm the full date before publishing. Never assume silently.
   const [yearUncertain, setYearUncertain] = useState(false);
@@ -49,16 +56,35 @@ export function ReviewForm() {
       setTitle(e.title ?? "");
       setBody(e.body ?? "");
       setEventDate(e.eventDate ?? "");
+      setDeadline(isIsoDate(e.eventDate) ? e.eventDate : "");
       setYearUncertain(Boolean(e.eventDate) && e.eventDateYearPrinted !== true);
       setEventTime(e.eventTime ?? "");
       setPlaceLabel(e.placeLabel ?? "");
       setCategory(e.categorySlug ?? "community");
       setRsvpUrl(e.rsvpUrl ?? "");
     }
+    setNow(new Date());
     setLoaded(true);
   }, []);
 
-  const needsDateConfirmation = yearUncertain && Boolean(eventDate);
+  const hasEventDate = Boolean(eventDate);
+  const spec = fieldSpec(category, { hasEventDate });
+  const isListing = spec.kind === "listing";
+  // The date the poster must confirm: the Deadline for listings, else the event date.
+  const activeDate = isListing ? deadline : eventDate;
+  const needsDateConfirmation = yearUncertain && Boolean(activeDate);
+  const pinZone = useMemo(() => (coords ? timeZoneForPin(coords.lat, coords.lng) : null), [coords]);
+  const takedown = useMemo(() => {
+    if (!now) return null;
+    return takedownLine({
+      categorySlug: category,
+      expiresAt: computeExpiresAt(now, expiry),
+      eventDate: isListing ? null : eventDate || null,
+      endDate: isListing ? deadline || null : eventDate ? endDate || null : null,
+      endTime: isListing || !eventDate ? null : endTime || null,
+      timeZone: pinZone,
+    });
+  }, [now, category, expiry, isListing, eventDate, endDate, endTime, deadline, pinZone]);
 
   function requestLocation() {
     if (!("geolocation" in navigator)) {
@@ -85,6 +111,15 @@ export function ReviewForm() {
       setStatus("Allow your current location to place the pin before publishing.");
       return;
     }
+    // Only the current kind's fields are sent; hidden values stay in state.
+    const dateFields = isListing
+      ? { deadline: deadline || null }
+      : {
+          eventDate: eventDate || null,
+          eventTime: hasEventDate ? eventTime || null : null,
+          endDate: hasEventDate ? endDate || null : null,
+          endTime: hasEventDate ? endTime || null : null,
+        };
     setStatus("Publishing…");
     const res = await fetch("/api/postings", {
       method: "POST",
@@ -93,10 +128,7 @@ export function ReviewForm() {
         title,
         body,
         categorySlug: category,
-        eventDate: eventDate || null,
-        eventTime: eventTime || null,
-        endDate: endDate || null,
-        endTime: endTime || null,
+        ...dateFields,
         dateNeedsConfirmation: needsDateConfirmation,
         dateConfirmed: needsDateConfirmation ? dateConfirmed : undefined,
         placeLabel,
@@ -117,8 +149,8 @@ export function ReviewForm() {
 
   if (!loaded) return null;
 
-  const fullDateLabel = eventDate
-    ? new Date(`${eventDate}T00:00:00Z`).toLocaleDateString("en-US", {
+  const fullDateLabel = activeDate
+    ? new Date(`${activeDate}T00:00:00Z`).toLocaleDateString("en-US", {
         timeZone: "UTC",
         weekday: "long",
         day: "numeric",
@@ -131,20 +163,43 @@ export function ReviewForm() {
     <form onSubmit={publish} className="space-y-5">
       <Field label="Title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} />
 
-      <div className="grid grid-cols-2 gap-3">
+      {isListing ? (
         <Field
-          label="Event date"
-          name="eventDate"
+          label={spec.deadlineLabel ?? "Deadline (optional)"}
+          name="deadline"
           type="date"
-          value={eventDate}
+          value={deadline}
+          hint={spec.deadlineHint ?? undefined}
           onChange={(e) => {
-            setEventDate(e.target.value);
+            setDeadline(e.target.value);
             setDateConfirmed(false); // a changed date must be confirmed again
           }}
           aria-describedby={needsDateConfirmation ? "year-warning" : undefined}
         />
-        <Field label="Time" name="eventTime" value={eventTime} onChange={(e) => setEventTime(e.target.value)} placeholder="19:30" />
-      </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            label={spec.eventDateOptional ? "Event date (optional)" : "Event date"}
+            name="eventDate"
+            type="date"
+            value={eventDate}
+            onChange={(e) => {
+              setEventDate(e.target.value);
+              setDateConfirmed(false); // a changed date must be confirmed again
+            }}
+            aria-describedby={needsDateConfirmation ? "year-warning" : undefined}
+            hint={spec.kind === "event-optional" ? "Leave empty for a general notice." : undefined}
+          />
+          <Field
+            label="Time"
+            name="eventTime"
+            value={eventTime}
+            onChange={(e) => setEventTime(e.target.value)}
+            placeholder="19:30"
+            disabled={spec.kind === "event-optional" && !hasEventDate}
+          />
+        </div>
+      )}
 
       {needsDateConfirmation ? (
         <div id="year-warning" className="rounded-card border-2 border-dark-red bg-white p-4 text-sm">
@@ -168,30 +223,36 @@ export function ReviewForm() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="End date (optional)"
-          name="endDate"
-          type="date"
-          value={endDate}
-          min={eventDate || undefined}
-          onChange={(e) => setEndDate(e.target.value)}
-        />
-        <Field
-          label="End time (optional)"
-          name="endTime"
-          type="time"
-          value={endTime}
-          onChange={(e) => setEndTime(e.target.value)}
-        />
-      </div>
-      <p className="-mt-3 text-xs text-ink/60">
-        Without an end, an event comes down at the end of its event day, in local time where it is
-        pinned.
-      </p>
+      {isListing ? null : (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Field
+              label="End date (optional)"
+              name="endDate"
+              type="date"
+              value={endDate}
+              min={eventDate || undefined}
+              disabled={spec.kind === "event-optional" && !hasEventDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+            <Field
+              label="End time (optional)"
+              name="endTime"
+              type="time"
+              value={endTime}
+              disabled={spec.kind === "event-optional" && !hasEventDate}
+              onChange={(e) => setEndTime(e.target.value)}
+            />
+          </div>
+          <p className="-mt-3 text-xs text-ink/60">
+            Without an end, an event comes down at the end of its event day, in local time where it is
+            pinned.
+          </p>
+        </>
+      )}
 
       <Field
-        label="Event place"
+        label={isListing ? "Place (optional)" : "Event place"}
         name="placeLabel"
         value={placeLabel}
         onChange={(e) => setPlaceLabel(e.target.value)}
@@ -210,11 +271,11 @@ export function ReviewForm() {
       </div>
 
       <Field
-        label="RSVP link (optional)"
+        label={spec.actionLabel}
         name="rsvpUrl"
         value={rsvpUrl}
         onChange={(e) => setRsvpUrl(e.target.value)}
-        hint="Optional. Exactly one external link, shown as a public button."
+        hint={`${spec.actionHint} Shown as a public button.`}
         placeholder="https://"
       />
 
@@ -225,7 +286,14 @@ export function ReviewForm() {
             <CategoryChip key={p} label={PRESET_LABEL[p]} selected={expiry === p} onClick={() => setExpiry(p)} />
           ))}
         </div>
-        <p className="mt-1 text-xs text-ink/60">Events also come down after the event date passes. You can delete a posting at any time.</p>
+        {takedown ? (
+          <p className="mt-2 text-sm text-ink" data-testid="takedown-line">
+            {takedown.text}
+          </p>
+        ) : null}
+        <p className="mt-1 text-xs text-ink/60">
+          {TAKEDOWN_ZONE_NOTE} You can delete a posting at any time.
+        </p>
       </div>
 
       <div className="rounded-card border border-board bg-board/20 p-4 text-sm">

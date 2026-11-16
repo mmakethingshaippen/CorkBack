@@ -5,6 +5,7 @@ import { PosterHandle } from "./PosterHandle";
 import { CardReactions } from "./CardReactions";
 import { OwnerControls } from "./OwnerControls";
 import { categoryLabel } from "@/lib/categories";
+import { cardDateLabel } from "@/lib/postingDisplay";
 import type { Posting } from "@/lib/types";
 
 /**
@@ -21,6 +22,7 @@ export function PostingCard({
   prevTilt = null,
   signedIn = false,
   isOwner = false,
+  distanceLabel,
 }: {
   posting: Posting;
   tiltId: string;
@@ -28,15 +30,11 @@ export function PostingCard({
   signedIn?: boolean;
   /** The viewer is this posting's author: show Edit and Delete (own profile only). */
   isOwner?: boolean;
+  /** Pre-formatted, rounded label (formatApproxDistance). Only the nearby list passes it. */
+  distanceLabel?: string;
 }) {
-  // event_date is a calendar date: format it without shifting time zones.
-  const dateLabel = posting.eventDate
-    ? new Date(`${posting.eventDate}T00:00:00Z`).toLocaleDateString("en-US", {
-        timeZone: "UTC",
-        day: "numeric",
-        month: "short",
-      })
-    : null;
+  // Calendar dates are formatted without shifting time zones (see postingDisplay).
+  const dateLabel = cardDateLabel(posting);
   return (
     <Card tiltId={tiltId} prevTilt={prevTilt} className="relative">
       <div className="mb-2 flex items-center justify-between">
@@ -54,6 +52,7 @@ export function PostingCard({
       <p className="mt-1 break-words text-sm text-ink/70">
         {dateLabel ? `${dateLabel} · ` : ""}
         {posting.placeLabel}
+        {distanceLabel ? ` · ${distanceLabel}` : ""}
       </p>
       <div className="relative z-10 mt-3 text-sm">
         <span className="flex min-h-[44px] items-center">

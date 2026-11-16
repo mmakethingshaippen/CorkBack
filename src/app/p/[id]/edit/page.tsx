@@ -5,7 +5,7 @@ import { BottomNav } from "@/components/ui/BottomNav";
 import { CorkBand } from "@/components/ui/CorkBand";
 import { getPosting } from "@/lib/postings";
 import { getViewer } from "@/lib/auth";
-import { isPostingActive } from "@/lib/lifecycle";
+import { isPostingActive, postingTakedown } from "@/lib/lifecycle";
 import { EditPostingForm } from "./EditPostingForm";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +45,13 @@ export default async function EditPostingPage({ params }: { params: Promise<{ id
         </CorkBand>
         <EditPostingForm
           postingId={posting.id}
+          lifecycle={{
+            expiresAt: posting.expiresAt,
+            timeZone: posting.timeZone ?? null,
+            lat: posting.lat,
+            lng: posting.lng,
+            takedownAt: postingTakedown(posting).toISOString(),
+          }}
           pinNote="The pin stays where it was placed when you published. Your exact location is never shown publicly."
           initial={{
             title: posting.title,

@@ -87,6 +87,7 @@ export async function GET(req: Request) {
         id: String(p.id),
         title: String(p.title),
         eventDate: (p.event_date as string) ?? null,
+        endDate: (p.end_date as string) ?? null,
         eventTime: (p.event_time as string) ?? null,
         placeLabel: String(p.place_label ?? ""),
         categorySlug: cat?.slug ?? "",

@@ -529,3 +529,217 @@ Max approved deploying only the read-only expiry route.
 ## Known issue (pre-existing, separate from Stage 10): intermittent React #418
 
 - Hydration mismatch (`args[]=HTML`) on some signed-in page loads: about 1 in 60 loads in a repeat test on the Stage 10 build, seen on `/` and `/inbox`, and none in the 43-check production smoke run. First recorded in Stage 8 and reproduced on a build of `origin/main` then. Not fixed and deliberately not bundled with Stage 10. Next step: reproduce on a dev build for the non-minified message and fix it in its own change.
+
+## Board usability improvements
+### Task 0.3: browser harness and baseline (branch `feature/board-usability-improvements`, nothing committed)
+- **Harness:** `scripts/board-e2e/` (`lib.mjs`, `fixtures.mjs`, `baseline.mjs`, `README.md`). Playwright core 1.49.1 (installed in `%TEMP%\cb_board_e2e`, not in `package.json`) driving installed Microsoft Edge, headless. Mocks `/api/postings/map`, OSM tiles and the geocoder; init script seeds `localStorage["corkback.mapCenter"]` and stubs `navigator.geolocation`; viewports 390x844 and 1280x800. The harness starts and stops `next start` itself (port 3200); no server was left running. Shared checks: no horizontal scroll, tap targets (44 px, primary 50 px), exactly one dark-red main action, map geometry.
+- **Finding about empty Supabase variables:** setting the three variables to empty strings in the build and `next start` environment does NOT give seed mode inside the repo. Next still loads `.env.local` and its values win. The first run served real project data (a real posting UUID and real handles on the home page). That run only read data (server-side page render), wrote nothing, and its results were discarded. Fix: build and run from a scratch copy of the repo without `.env.local` (README step 1), which serves `src/lib/seed.ts` data (handles `@lenahoffmann`, `@colectivoroma`). The `.next` in the repo was rebuilt once by the first attempt; `next-env.d.ts` was restored with `git restore` and is unchanged.
+- **Baseline (current build, seed mode, saved map center seeded, location stub OK):**
+
+| Measure | 390x844 | 1280x800 |
+|---|---|---|
+| Map top edge | 552 px (65.4% of 844) | 408 px (51.0% of 800) |
+| Map height (element) | 256 px (`h-64`) | 256 px |
+| Bottom nav top | 783 px | 739 px |
+| Visible map height above bottom nav | 231 px | 256 px |
+| Horizontal scroll | none | none |
+| Dark-red main actions | 2 ("Scan a flyer" and the bottom-nav "Scan" circle) | 2 |
+| Tap targets under 44 px | 20 elements: Sign in 43x20, Use my location 32 high, 10 category chips 32 high, 2 author handles 29 to 33 high, 5 bottom-nav links 40 high | same |
+| Primary "Scan a flyer" height | 48 px (target 50) | 48 px |
+| Page errors | none | none |
+
+- **Against Stage 1 targets (Requirement 1.8):** at 390x844 the map top is 65.4% (target at or below 55%) and 231 px is visible (target at least 240 px), so both fail on the current build, as expected before Stage 1.
+- **Status:** browser checks ran in Edge, no block. Raw results: `%TEMP%\cb_board_e2e\baseline.json`, screenshots in `%TEMP%\cb_board_e2e\shots\`. The baseline "two dark-red actions" and tap-target failures are the pre-change state, not regressions.
+
+### Stage 1 (compact category filter)
+- **Fixes after the first `stage1.mjs` run (all in Requirement 1.3 and 1.9):** (1) the panel overflowed the viewport (anchored left of the trigger, 352 px wide). `CategoryFilter` now measures the panel when it opens and shifts it left so it stays 16 px inside the viewport at both widths. (2) Outside click closed on `pointerdown` but the browser's default mousedown focus change then moved focus away. Focus now returns to the trigger on the next task (`setTimeout 0`). (3) `HomeMap` drew pins in `map.once("load")` from the unfiltered list. It now reads the latest filtered list from a ref, so pins match the filter even when load fires after a category change.
+- **Baseline vs after (390x844, seed mode, same harness):**
+
+| Measure | Baseline | After Stage 1 | Target |
+|---|---|---|---|
+| Map top edge | 552 px (65.4%) | 332 px (39.3%) | at or below 55% |
+| Map height | 256 px | 288 px (`h-72`) | n/a |
+| Visible map above bottom nav | 231 px | 288 px | at least 240 px |
+
+  At 1280x800 the map top is 308 px (38.5%, baseline 408 px) and the map is 384 px high (informational, no threshold).
+- **Commands and results:** `npm run typecheck` PASS. `npm run lint` PASS (no warnings or errors; `next lint` deprecation notice only). `npm test` PASS (29 files, 278 tests, includes the Property 1 filter test and the fixture guard). `npm run build` PASS, run in the scratch copy without `.env.local` (seed mode, empty Supabase variables) so the real project is never read. `node stage1.mjs` against `next start` from that copy, Edge headless, mocked data only, no location or camera: 28 checks at 390x844 and 27 at 1280x800, all PASS. Checks cover: map position and visible height, one trigger "Category: All", open by click, Enter and Space, close by Escape, outside click, second click and selection (focus returns to the trigger each time), panel list order, overlay with no layout shift, panel inside the viewport, no follow control when signed out, filtered pins equal cards, empty category keeps the selection and shows the empty state, selected row dark red, no horizontal scroll with the panel closed and open, tap targets of the feature controls at least 44 px, one dark-red main action, no page errors. Results: `%TEMP%\cb_board_e2e\stage1.json`.
+- **Pre-existing, not Stage 1 failures:** under-44 px elements: top-bar Sign in (43x20), author handles (29 to 33 high), five bottom-nav links (40 high). The bottom-nav "Scan" circle is a second dark-red action that existed in the baseline.
+- **Untested, needs a live check:** signed-in follow and unfollow from the panel and next to the trigger with a real account (the harness runs signed out); the filter on a real phone (touch, tiles, real data); one more look at panel placement on a real narrow device.
+- **Cleanup:** no server left running; the scratch build copy's contents were removed (junction removed with `rmdir` first, real `node_modules` intact); an empty `%TEMP%\cb_board_build` folder remains, locked by Windows, and can be deleted after a restart. No commits or pushes. `next-env.d.ts` unchanged.
+
+### Stage 2 (nearby radius and distance)
+- **Owner's pre-coding containment check (recorded as agreed):** `boundsForRadius` uses the exact spherical longitude half-width `asin(sin(d/R) / cos(lat))` plus a 1e-7° margin, latitude half-width `d/R`, and the same Earth radius as `haversineMeters`. Near the poles and across the antimeridian it uses the full longitude range. `snapBoundsOutward` only expands (0.1° grid, idempotent). The server filter is inclusive. The browser's `buildBoardView` is the final exact filter. Tests: `mapBounds.snap.test.ts` (600-run containment at exactly the radius and at radius − 0.01 mi, all bearings, latitude −85..85, Berkeley in 8 directions); `nearby.view.test.ts` (edge fixtures inside, at and outside the radius, Berkeley and 60°N); `nearbyLoading.test.ts` Property 34 (500-run end-to-end pipeline `buildMapRequest` → `parseBounds` → snap → `selectForBounds` → `buildBoardView`, no posting within the radius lost); route and `mapQuery` edge tests (a posting exactly on the box edge and one exactly 10 mi to the NE are returned).
+- **Caps kept:** 300 pins and 100 cards. The map query reads pages of cap + 1 rows (up to 4 pages), drops ended events, and sets `truncated` if the page limit is hit. This deviates from the design's single read, to avoid short pages after ended events are dropped.
+- **Interim, until Stage 4:** the "Explore the world" map shows the same capped nearby list, not every posting.
+- **Behaviour notes:** the automatic location request on load (no saved centre) is preserved. An explicit search or "Use my location" is never overwritten by a late automatic result. When the client's request equals the server's initial request, the server list is used without a refetch.
+- **Harness changes (script only, no product code changed, no regression found):** the `HomeMap` rewrite in 4.8 broke three `stage1.mjs` assumptions. (1) With the default saved centre the page now uses the server-rendered list (empty in seed mode around Berkeley), so pins and cards were 0. Stage 1 now seeds a saved centre 2.2 km south of Berkeley (same trick as `stage2.mjs`) so the mocked fixtures are fetched. (2) The empty-state text is now "Nothing within {r} mi of {place}". (3) The selected radius option ("10 mi", `aria-checked="true"`) is dark red like a selected category chip and was counted as a second main action; the dark-red check now skips `aria-checked="true"` as well as `aria-pressed="true"`. With fixture cards on screen, the card title link (39 to 40 px high, `PostingCard`, unchanged) is classed as pre-existing under-44 px next to author handles and bottom nav.
+- **Checks (current working tree, branch `feature/board-usability-improvements`, nothing committed):**
+| Check | Result |
+|---|---|
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS (no warnings or errors) |
+| `npm test` (includes all Stage 1 and 2 property and unit tests, Properties 1 to 9, 25, 26, 31 to 36 as scheduled) | PASS, 42 files, 382 tests |
+| `npm run build` in a scratch copy without `.env.local`, empty Supabase variables (never against real Supabase) | PASS |
+| `node stage1.mjs` (Edge headless, `next start` from the scratch build, mocked data, location stub only) | PASS: 29 of 29 at 390x844, 28 of 28 at 1280x800 |
+| `node stage2.mjs` (same setup) | PASS: 138 checks (4 preconditions, 68 at 390x844, 66 at 1280x800), none failed |
+  Stage 2 script covers: search "Berkeley" shows the fixture Richmond card as "About 7 mi away" under "Within 10 mi of Berkeley", hidden at 5 mi, exact-distance filter drops the just-outside posting that is inside the coarse box, pins equal cards, ring drawn, "Show full radius", empty state and "Try" button, 100+ response shows the truncated notice, request URLs carry only snapped bounds, category and `mode=cards`, failed request keeps previous cards with a retry, no horizontal scroll (including 100 cards), no page errors. Results: `%TEMP%\cb_board_e2e\stage1.json` and `stage2.json`.
+- **Location:** no real location or camera permission requested; geolocation is the harness stub. The real geocoder was never contacted (canned answer).
+- **Still needs a live test:** "Use my location" distances on a real phone; the radius ring and "Show full radius" on real tiles; signed-in viewer likes on fetched cards; real search geocoder results for Berkeley and Richmond; the automatic-location precedence on a real device (late automatic fix versus a search typed first).
+- **Cleanup:** no server left running; scratch build removed (junction removed with `cmd /c rmdir` first, real `node_modules` intact); an empty `%TEMP%\cb_board_build` folder may remain and can be deleted after a restart. `next-env.d.ts` was changed by the typecheck/lint run (added a `.next/types/routes.d.ts` reference) and restored with `git restore`. No commits or pushes.
+
+### Stage 3 notes
+- **Alert job scale follow-up (outside this feature, Requirement 12.9):** `src/app/api/cron/alerts/route.ts` reads every active posting in one query (`deleted_at` null, `moderation_hidden_at` null, `expires_at` in the future), reads every alert, then runs a nested loop: for each alert it fetches that owner's hidden set and email, then calls `alertMatchesPosting` (`src/lib/alerts.ts`) against every posting, with one `sent_alerts` lookup per matching pair. Work grows as alerts x postings and nothing narrows postings by category or distance before matching. This feature makes no change to how the job selects postings. Follow-up for later: select postings per alert (category and bounding box in the query, or a spatial index) and batch the hidden-set and `sent_alerts` lookups.
+- **Takedown parity check (task 7.5):** `supabase/isolated-test/takedown.mjs` compared the existing production function `public.posting_takedown_at` (`stage6_social_part1.sql`) with the app's `postingTakedown` over 7,594 generated listing and Community rows. Result: 458 mismatches, all pre-existing and not caused by this feature.
+  1. End times inside daylight saving gaps or overlaps in real zones differ by one hour (the app is one hour earlier).
+  2. Unusual `end_time` values (fractional seconds, `24:00`). The app's validators only accept `HH:MM`, so these cannot be written through the app.
+  3. Zone strings Postgres accepts as abbreviations or POSIX rules (`UTC+5`, `CET`, `Factory`, ...) that the app rejects. `tz-lookup` always returns Area/City names, so the app never stores these.
+- **Draft fix, NOT applied:** `supabase/stage13_takedown_app_parity.sql` with `supabase/stage13_takedown_app_parity_rollback.sql` (renamed from stage11 to avoid colliding with the planned stage 11 message-reads files; untracked). Loaded in the throwaway database it gives 0 mismatches except 304 rows using `PST`, `CET`, `EET`, `MET`, `WET`, which the app cannot store. Re-checked after the rename: without the draft, exit 1 with 458 mismatches; with `CB_TAKEDOWN_DRAFT=stage13_takedown_app_parity.sql`, exit 0 with 0 mismatches, 304 known-limit rows, and the rollback restores the stage 6 definitions exactly.
+- **Owner decision needed:** the draft also makes `cb_safe_time_zone` stricter for names without `/` (a fixed allow-list). That changes which zones the database accepts and needs owner review. Requirement 10.9 (database agrees with app) is therefore not met in production until the owner reviews and applies stage13, or accepts the pre-existing one-hour DST-edge difference.
+
+### Stage 3 (category-specific fields and expiry): checkpoint (task 8)
+Branch `feature/board-usability-improvements`, nothing committed or pushed. Never contacted the real Supabase project, nothing published.
+
+- **Commands and results:**
+| Command | Result |
+|---|---|
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS (no warnings or errors; `next lint` deprecation notice only) |
+| `npm test` (includes the Stage 3 Properties 10 to 16, 27 to 30, alert tests, `route.edit.test.ts`) | PASS, 52 files, 460 tests |
+| `npm run build` in a scratch copy without `.env.local` (seed mode, empty Supabase variables) | PASS |
+| `npm run build` in the same scratch copy with the mock URL `http://127.0.0.1:3299` (needed by `stage3.mjs`, README "Stage 3") | PASS |
+| `node stage1.mjs` (Edge headless, `next start` from the seed-mode build, mocked data) | PASS |
+| `node stage2.mjs` (same build) | PASS |
+| `node stage3.mjs` (mock-URL build, local mock Supabase on 127.0.0.1:3299) | PASS: 176 checks across 390x844 and 1280x800, 0 failed |
+| `node supabase\isolated-test\takedown.mjs` without the draft | exit 1 as expected: 7,594 rows, 458 mismatches (same as "Stage 3 notes") |
+| Same with `CB_TAKEDOWN_DRAFT=stage13_takedown_app_parity.sql` | exit 0: 0 mismatches, 304 known-limit rows (PST, CET, EET, MET, WET), rollback restores the stage 6 definitions exactly |
+| `node supabase\isolated-test\avatars.mjs` | 70 passed, 0 failed (no regression) |
+- **Test environment note:** the first `npm test` run had 1 failure in `src/lib/avatars/avatars.test.ts` (Property 9, avatar URL for an invalid path) because my shell still had `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:3299` exported from the Stage 3 build. With the three variables cleared, all 460 tests pass. No code change. The avatar test depends on the process environment; run `npm test` with those variables unset.
+- **Per-category labels verified in Edge (`stage3.mjs`, review form):** events (music, nightlife, sports, social-clubs, classes): Event date (required), Time, End date/time, Event place, RSVP link (optional). Jobs: "Apply by (optional)", "Application link (optional)". Housing: "Available until (optional)", "Listing or contact link (optional)". For sale: "Offer ends (optional)", "Listing link (optional)". Lost and found: "Keep this up until (optional)", "Contact link (optional)". Listings show no event date, time or end fields and no "Without an end, an event comes down..." sentence. Community: date optional, with its hint; Time, End date and End time disabled until a date exists; button text by category and "RSVP" or "Learn more" for Community.
+- **Takedown wording verified:** review and edit forms "Comes down on {date}: {phrase}" (for example "your deadline passes", "the time you chose to keep it on the board ends"); detail page "On the board until {date} (expiry|deadline|event ends)" per design.md. Listing without a Deadline reads "(expiry)"; Community with a date reads "(event ends)", without a date "(expiry)" and no date row. Cards: "Apply by Jun 15" for a listing with a Deadline, "Dec 5" for Community with a date, no date line for date-less Community or a listing without a Deadline. A stored legacy `event_date` and `event_time` still show.
+- **PATCH contract (`PATCH /api/postings/[id]`):** the client sends `deadline` and `replaceLegacyEventDate`. Date fields are written by kind in one update. A legacy `event_date` on a listing is kept unless the client reports that the replacement notice was shown. Event to listing change clears `event_time` and `end_time`. A validation error writes nothing. Covered by `route.edit.test.ts` and Property 16 against a stubbed client. In the browser the PATCH is a mocked 400 only.
+- **Alert email fix (task 7.2):** listings read "Apply by Dec 1" (`fieldSpec(slug).cardPrefix`), events keep "Date: ...", date-less Community postings and listings without a Deadline omit the date line, an unparseable date omits the line and the email still sends. The cron route passes `endDate` and `categorySlug`; how postings are selected is unchanged.
+- **Takedown parity finding (Requirement 10.9):** the production `posting_takedown_at` differs from the app's `postingTakedown` on 458 of 7,594 generated rows (DST gap and overlap hours, odd `end_time` values, zone strings only Postgres accepts). Draft fix `supabase/stage13_takedown_app_parity.sql` (+ rollback) is NOT applied. **Owner decision:** the draft makes `cb_safe_time_zone` stricter for names without `/` (a fixed allow-list). Until the owner reviews and applies it, or accepts the one-hour DST-edge difference, Requirement 10.9 is unmet in production. This is not a Stage 3 regression.
+- **Interpretation recorded (Requirement 7.4 vs design):** listings show "Place (optional)" (design table) while Requirement 7.4 says no "Event place" field. I read it as: the general place field stays with the listing label, and the event-specific fields (Event place, event date, time, end) are hidden. Browser check confirms the listing field list is exactly Title, deadline label, Place (optional), Details, link label.
+- **Untested in a browser (mocked only):** real Supabase RLS and session handling on the review and edit pages (a fake `sb-127-auth-token` cookie and a local mock were used), the real `PATCH` 400 for an ended Community clear-date and for validation errors (mocked response; server logic covered by unit and property tests), publishing (`POST /api/postings` is intercepted and fails the run if called), real scan of a flyer with a deadline (scanned date was a mocked response), real alert email delivery.
+- **Still needs a live test by the owner (production data, nothing was run):**
+  1. A real posting in each listing category (jobs, housing, for sale, lost and found) with and without a Deadline: review labels, takedown line, card, detail page.
+  2. A real Community posting with and without a date: button text, takedown line, card with no date line.
+  3. Edit of a legacy-date listing (the notice, Deadline pre-filled, nothing saved until Save, legacy date kept or replaced as shown) and an event to listing change.
+  4. Takedown lines on existing production postings (detail page "On the board until ...", reason), and the ended-Community clear-date rejection with a real ended posting.
+  5. A real alert email for a listing ("Apply by ...") and for a date-less Community notice.
+  6. Review of `stage13_takedown_app_parity.sql` (owner decision above).
+- **Cleanup:** no server left running (ports 3200 and 3299 free); scratch build contents removed (junction removed with `cmd /c rmdir` first, real `node_modules` intact; an empty `%TEMP%\cb_board_build` folder may remain and can be deleted after a restart). `next-env.d.ts` was changed by the typecheck/lint/build run and restored with `git restore`. No commits or pushes. `tasks.meta.json`: the stale `stage11_takedown_app_parity` reference was replaced with `stage13_takedown_app_parity` (text only).
+
+### Stage 4 (both-map category filter and bounded world map)
+Checkpoint (task 10). Branch `feature/board-usability-improvements`, nothing committed or pushed. Never contacted the real Supabase project.
+
+- **Fix 1, world map crash at load (found by `stage4.mjs`, task 9.9):** the board page threw "Cannot read properties of null (reading '0')" in both viewports. MapLibre 6.17.0 throws inside `map.resize()` -> `constrainInternal` -> `setZoom` -> `_calcMatrices` when the map is created with `maxBounds`. Choice: drop `maxBounds` (design.md does not require it), keep `renderWorldCopies: false`, add `minZoom: 1` so the world is not shown several times, and keep clamping the bounds passed to `onBoundsChange` to +-180 / +-90 (`readBounds` in `src/components/map/MapView.tsx`). Clamping is what matters for requests, because `/api/postings/map` rejects wrapped or out-of-range boxes. The "set maxBounds after first load" option was not used: it keeps the same MapLibre code path and is harder to prove safe. `HomeMap.tsx` (local map) does not set `maxBounds`, so it was not affected.
+- **Fix 2, caption count (Req 14.4):** `{n}` in "Explore the world · {category} · {n} postings in view" was the number of pins returned for the snapped box, which is slightly larger than the visible view. It is now `countInView(items, bounds)` (`src/lib/mapBounds.ts`): the pins whose lat/lng lies inside the map's actual unsnapped view, edges inclusive, recomputed on every `moveend`. All returned pins are still drawn. The truncated caption is unchanged. Unit and property tests: `src/lib/mapBounds.view.test.ts`.
+- **Script updates (assertion changes only, no product failure hidden):**
+  - `stage4.mjs` scenario T: the zoomed-in caption is now checked against the drawn markers whose centre lies inside the map container (strict and loose counts with 1.5 px tolerance, because marker positions are rounded to whole pixels), not against all drawn markers.
+  - `stage2.mjs`: since Stage 4 the world map sends `mode=pins` requests. The mock answers them (cap 300) and records them apart from the local-map cards log. Every request in both modes is still shape-checked (0.1 grid bounds, optional category, mode, nothing else).
+- **Commands and results:**
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS (no warnings or errors; `next lint` deprecation notice only) |
+| `npm test` (three Supabase variables cleared) | PASS, 57 files, 484 tests |
+| `node supabase\isolated-test\geoindex.mjs` (`CB_ISO_DIR=%TEMP%\cb-iso`) | 54 passed, 0 failed |
+| `node supabase\isolated-test\avatars.mjs` | 70 passed, 0 failed |
+| `npm run build`, scratch copy without `.env.local`, empty Supabase variables (seed mode) | PASS |
+| `npm run build`, scratch copy without `.env.local`, mock URL `http://127.0.0.1:3299` (for `stage3.mjs`) | PASS |
+| `node stage1.mjs` (Edge, 390x844 and 1280x800, `next start`, mocked data) | PASS, 57 checks, 0 failed |
+| `node stage2.mjs` | PASS, 138 checks, 0 failed |
+| `node stage3.mjs` (mock-URL build, local mock Supabase) | PASS, 176 checks, 0 failed |
+| `node stage4.mjs` (current tree, no line removed from the scratch copy) | PASS, 156 checks, 0 failed |
+
+- **Run note:** the first full `stage4.mjs` run on a busy machine failed D1 (the harness's own pan gaps were 445 and 364 ms, and 1044 and 635 ms, above the 400 ms debounce, so two requests were expected behaviour) and P2/G (`next start` refused connections late in the run). `CB_ONLY=D1,P2,G` passed, and the next full run passed every check with gaps of 351 and 326 ms. No code change for these.
+- **Caps:** 300 pins and 100 cards kept, with the owner-confirmed truncated caption "Showing 300 of many postings in this view. Zoom in to see more."
+- **World map no longer loads every posting:** the page HTML embeds 0 posting objects for the world map (`stage4.mjs` P: 16,671 bytes, `postingObjs: 0`). Pins are fetched per view with a 400 ms debounce; an earlier request is aborted when a new one starts, and a stale response is ignored.
+- **Geo index:** `supabase/stage12_postings_geo_index.sql` (with preflight, verify and rollback files) is drafted and tested in the throwaway database (`geoindex.mjs`, 54/54). It is **NOT applied** to production.
+- **Still needs live checks:**
+  1. The world map on real OSM tiles with real data across the globe (pan, zoom, category, caption count, truncated caption).
+  2. CDN caching of `/api/postings/map` pins responses on Vercel.
+  3. Real pan and zoom on a phone.
+  4. Applying stage12 after owner review, then the verify script on production.
+- **Cleanup:** no server left running. Scratch builds `%TEMP%\cb_t10_seed` and `%TEMP%\cb_t10_mock` removed (junction removed with `cmd /c rmdir` first; real `node_modules` intact). `next-env.d.ts` restored with `git checkout`. No commits or pushes.
+
+## Board usability improvements: final verification
+
+Task 13 (final checkpoint), 2026-11-15, branch `feature/board-usability-improvements`, run on the current working tree (nothing committed, nothing pushed). `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` were cleared in the shell. The real Supabase project was never contacted: the DB checks ran in the throwaway database (`CB_ISO_DIR=%TEMP%\cb-iso`), and the builds and browser runs used scratch copies without `.env.local`.
+
+| Command / script | Result |
+|---|---|
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS (no warnings or errors; `next lint` deprecation notice only) |
+| `npm test` | PASS, 64 files, 529 tests |
+| `node supabase\isolated-test\messagereads.mjs` | PASS, 67 passed, 0 failed |
+| `node supabase\isolated-test\geoindex.mjs` | PASS, 54 passed, 0 failed |
+| `node supabase\isolated-test\avatars.mjs` | PASS, 70 passed, 0 failed |
+| `node supabase\isolated-test\takedown.mjs` (stage 6 SQL, no draft) | exit 1 as expected: 458 mismatches of 7,594 rows (pre-existing) |
+| `node supabase\isolated-test\takedown.mjs` with `CB_TAKEDOWN_DRAFT=stage13_takedown_app_parity.sql` | PASS, exit 0: 0 mismatches, rollback restores the stage 6 definitions; 304 rows are the known limit (WET, EET, PST, CET, MET) |
+| `node supabase\isolated-test\run.mjs` (README still applies; ran in about 54 s; includes the concurrency suite) | PASS, 52/52 |
+| `npm run build`, scratch copy, no `.env.local`, empty Supabase variables (seed mode) | PASS |
+| `npm run build`, scratch copy, no `.env.local`, mock URL `http://127.0.0.1:3299` | PASS |
+| `node stage1.mjs` (Edge, 390x844 and 1280x800, `next start`, mocked data) | PASS, 57 checks, 0 failed |
+| `node stage2.mjs` | PASS, 138 checks, 0 failed |
+| `node stage3.mjs` (mock-URL build, local mock Supabase) | PASS, 176 checks, 0 failed |
+| `node stage4.mjs` | PASS, 156 checks, 0 failed (final full run) |
+| `node stage5a.mjs` (mock-URL build) | PASS, 123 checks, 0 failed |
+| `node stage5b.mjs` (mock-URL build) | PASS, 131 checks, 0 failed |
+
+Check counts for the browser scripts are PASS lines across both viewports. Live checks listed below are UNTESTED.
+
+### Run notes
+
+- **`stage4.mjs` assertion change (legitimate):** checks P and P2 asserted that the page load makes no `/api` request other than `/api/postings/map`. Since Stage 5b, BottomNav polls `GET /api/messages/unread` (a signed-out visitor gets 401 and the poll stops). The two checks now ignore that one endpoint. They still fail on any other `/api` call, including any `/api/postings` call besides the map request.
+- **`stage4.mjs` D1 is timing-sensitive:** it makes three real mouse pans with gaps that must each stay under the 400 ms debounce. On this busy machine two full runs failed D1 on gaps such as 445 and 370 ms (the harness's own pan gaps, so two requests is correct behaviour), and one run lost `next start` partway (connection refused), which failed later scenarios. `CB_ONLY=D1,D3,D4,P,P2,G` passed on both viewports, and the next full run passed 156/156. No product code changed for this.
+- A stale `stage5a` process and its `next start` were left over from an interrupted earlier command and were stopped before the final runs. Every script result above is from a run on its own.
+
+### SQL status (nothing applied anywhere)
+
+| Draft | Files | Test | Status |
+|---|---|---|---|
+| `stage11_message_reads` | 4 (migration, preflight, verify_roles, rollback) | isolated 67/67 | **NOT applied.** The unread indicator ships dark until it is applied (`/api/messages/unread` answers `{supported:false}` and nothing shows). |
+| `stage12_postings_geo_index` | 4 (migration, preflight, verify, rollback) | isolated 54/54 | **NOT applied.** Optional: map queries work without the index. |
+| `stage13_takedown_app_parity` | 2 (migration, rollback) | `takedown.mjs`: 458 mismatches without it, 0 with it | **NOT applied.** Fixes a pre-existing one-hour difference at daylight saving edges between `posting_takedown_at` and the app's `postingTakedown`, and makes `cb_safe_time_zone` stricter. Owner decision. |
+
+### Notable decisions and deviations
+
+- **Map query paging:** the map query reads up to 4 pages of cap + 1 rows so that the truncated flag and the caps (300 pins, 100 cards) hold after the exact distance filter.
+- **`maxBounds` removed:** MapLibre 6.17 crashed with it set, so the world map has no pan limit.
+- **Auto-location on load kept:** the home page still asks for the device position on load, as before. Location stays in the browser and never goes into a request (`stage4.mjs` G).
+- **Listing "Place (optional)" kept:** listing forms keep the optional place field.
+- **Detail page expiry reasons:** the detail page shows the reason "(expiry|deadline|event ends)" per the design.
+- **Unread SQL uses `security definer` functions:** stage11 counts and marks through definer functions, so a third user sees nothing and cannot mark (checked in `messagereads.mjs`).
+- **Unread handle weight:** the unread handle uses `font-extrabold` (800) and a read handle is already `font-bold` (700, `src/app/inbox/InboxList.tsx` line 81). Kalam is loaded at 400 and 700 only (`src/app/layout.tsx`), so 800 renders the same as 700 and the weight alone shows no difference. The visible unread marker is the dark-red dot plus the hidden "Unread" text for screen readers.
+
+### Still needs live tests (UNTESTED)
+
+1. A real two-account message thread: automatic refresh between two browsers, and mark-read clearing the badge after stage11 is applied.
+2. Background-tab pause of thread polling on a real phone.
+3. The unread badge after the owner applies stage11, then runs `stage11_message_reads_verify_roles.sql`.
+4. "Use my location" distances and the radius ring on a real phone.
+5. The real geocoder for Berkeley and Richmond.
+6. The world map on real tiles with real data, and CDN caching of `/api/postings/map` pins on Vercel.
+7. A real posting in each listing category and in Community, with and without a date.
+8. Editing a legacy-date listing.
+9. A real alert email for a listing.
+10. Signed-in follow from the category panel.
+
+### Cleanup
+
+No server left running. Scratch builds `%TEMP%\cb_fin_seed` and `%TEMP%\cb_fin_mock` removed after rmdir of the `node_modules` junctions. An older scratch folder `%TEMP%\cb_board_build` (no junction, real `node_modules` intact) could not be deleted because Windows reports it in use; it is outside the repo and can be removed later. `next-env.d.ts` restored with `git checkout`. No commits or pushes.
+
+## Board usability improvements: preview preparation (2026-11-16)
+
+- **Diff review (89 new and 21 changed files, branch `feature/board-usability-improvements`):** no secrets. The only key-like strings are fake test values (`fx-anon-key`, `test-service-key`, empty strings in the harness README). No generated files: no `.next`, no `node_modules`, no logs, screenshots or result JSON. `next-env.d.ts` is excluded. Fixtures stay out of the app: `src/lib/__fixtures__` and `src/lib/__testing__` are imported only by `*.test.ts` files (checked by search and by `fixtureGuard.test.ts`), and nothing under `src/` imports `scripts/board-e2e`. `src/lib/seed.ts` is unchanged. Production code changes reviewed: `page.tsx` loads only the capped cards query; `BottomNav` polls the unread count (dark until stage 11 is applied); the alert cron passes `endDate`; `postings.ts` only exports existing helpers.
+- **Automatic location changed:** the board now reads the device location by itself ONLY when the browser already reports `granted` for geolocation (`navigator.permissions.query`, new `src/lib/geoPermission.ts`). For `prompt`, `denied`, no Permissions API or any error it makes no request and waits for "Use my location", so the page never shows a permission prompt on its own. A search or a "Use my location" tap now blocks the automatic result from the moment it starts (previously only after a search succeeded), so a late device fix can never override a searched city.
+  - Checks: typecheck, lint, `npm test` 65 files / 532 tests (new `geoPermission.test.ts`). Production build (seed-mode scratch copy, no `.env.local`). Edge at 390x844 and 1280x800: stage1 57/57, stage2 150/150 (138 before; new: B "prompt" makes no request, C "granted" requests once, E "denied" makes no request, F a 4 s delayed fix after a Berkeley search leaves the heading, saved centre and cards on Berkeley), stage4 156/156. Harness: `newPage` gains `permission` and `geoDelayMs`. Earlier results for stage3 (176), stage5a (123), stage5b (131) and the isolated database tests stand; those code paths are unchanged.
+- **stage13 read-only production inventory** (project `djdmiqxzcgjdwcxqqrzk`, 2026-11-16 15:03 UTC; one PostgREST GET of id, category, dates, end_time, time_zone and moderation columns, no titles or locations; comparison in a throwaway local Postgres):
+  - 4 postings (1 on the board now). Stored zones: `America/Los_Angeles` x2, null x2 (pre-Stage 6, fall back to Etc/GMT+12 on both sides).
+  - Zones without "/": 0. Rows in the excluded known-limit set (PST, CET, EET, MET, WET; the 304 generated rows): 0.
+  - Live function = app for 4/4; draft = app for 4/4; **postings whose takedown the draft would change: 0.**
+  - So the 458 generated mismatches are not present in current data. The draft matters only for future rows whose end time falls in a daylight saving gap/overlap hour (one hour difference) or for zone strings the app never stores. Recommendation: not a prerequisite for this release; review stage13 on its own.
+- **Remaining live tests (unchanged list plus one):** real two-account thread (auto-refresh between two browsers, mark-read clearing the badge after stage 11); background-tab pause on a real phone; unread badge after the owner applies stage11; "Use my location" distances and the radius ring on a real phone; **automatic location on a phone where permission was already granted, and no prompt on a fresh browser**; real geocoder for Berkeley and Richmond; world map on real tiles with real data and CDN caching of pins; a real posting in each listing category and Community with and without a date; edit of a legacy-date listing; a real alert email for a listing; signed-in follow from the category panel.

@@ -43,6 +43,21 @@ delete is uncommitted waits (checked with `pg_blocking_pids`) and is then refuse
 while a report is uncommitted waits and then resolves that report; dismiss vs hide in both orders; a stress round of
 hide / two dismissals / report / delete / restore with no deadlocks. It creates and deletes users, so run it only here.
 
+`takedown.mjs` (design Property 15, Requirement 10.9) compares `public.posting_takedown_at` and
+`cb_safe_time_zone` from `stage6_social_part1.sql` with the app's `postingTakedown` (`src/lib/lifecycle.ts`), to the
+millisecond, for about 7,600 seeded rows. The rows cover listings (only `end_date`, with or without `end_time`) and
+Community postings (no dates, only `event_date`, or with `end_date`/`end_time`), on and around daylight saving days.
+They use every zone name in `pg_timezone_names`, plus null, malformed, abbreviation and POSIX-style names. The script
+cuts the two function definitions out of the stage file and runs them. The TypeScript runs as-is: sucrase (already in
+the repo's `node_modules`) transpiles it in memory, and nothing is written or reimplemented. Run it with
+`$env:CB_ISO_DIR = "$env:TEMP\cb-iso"; node supabase\isolated-test\takedown.mjs`. To check a draft fix, also set
+`$env:CB_TAKEDOWN_DRAFT = "stage13_takedown_app_parity.sql"`. The script applies the draft twice, compares, then applies
+`_rollback.sql` and checks that the stage 6 definitions come back exactly.
+Result on the current stage 6 SQL: 458 mismatches. These are local end times in a daylight saving gap or overlap,
+`end_time` with fractions or 24:00, and pattern-valid zone names that Postgres reads as an abbreviation or POSIX rule.
+With the stage 13 draft: 0 mismatches and a rollback PASS. 304 rows are reported as a known limit and do not fail:
+PST, CET, EET, MET and WET, which only the app accepts and which tz-lookup never returns.
+
 Mutation check: set `CB_SQL_DIR` to a scratch copy of `supabase/` with one deliberate regression and run `run.mjs`.
 Seven regressions (no share lock in `submit_posting_report`, `posting_reaction_counts` ignoring moderation, no report-owner
 check in `admin_hide_posting`, the old audit trigger, no posting lock in `admin_dismiss_report`, rate limit counted on
@@ -52,3 +67,35 @@ Limits: production's exact Postgres minor version and any untracked manual
 changes in production are not reproduced. The production preflight is the
 check for that. PostgREST on Windows sometimes exits with code 3 at startup;
 the harness retries up to three times and reports the attempt.
+
+`geoindex.mjs` (Requirement 16, task 9.8) tests the stage 12 geo index drafts (`stage12_postings_geo_index*.sql`, not
+applied anywhere). It builds minimal `public.postings` and `public.categories` tables with the real column names and
+types and seeds 5,000 rows (a dense Bay Area cluster, rows across the US, deleted, hidden and expired rows, promoted
+rows, shared `created_at` values). It runs the preflight, the migration twice, verify, and the rollback twice (also with
+no index present), and asserts exactly one index, a stable definition, and an unchanged md5 hash of every row after each
+step. A SQL version of the map query (inclusive lat/lng range, deleted/hidden null, `expires_at > now()`, optional
+category join, `is_promoted desc, created_at desc, id desc`, limit 101) runs for ten boxes before the index, with it
+(default planner and `enable_seqscan = off`, checking the plan names the index) and after rollback; the id lists must
+match exactly. Mutation checks: five wrong indexes (missing either condition, an `expires_at` predicate, not partial,
+columns reversed) make both verify and the migration fail; a modified row, a deleted row and a migration variant that
+updates a row each change the hash. Run it with `$env:CB_ISO_DIR = "$env:TEMP\cb-iso"; node supabase\isolated-test\geoindex.mjs`.
+Result: **54 passed, 0 failed**. The drafts needed no fix.
+
+`messagereads.mjs` (Requirement 19, task 12.2, design Property 24) tests the stage 11 message reads drafts
+(`stage11_message_reads*.sql`, not applied anywhere). It loads the production files for the prerequisite schema
+(`schema.sql`, `stage3_messaging.sql`, `stage6_social_part4.sql`), seeds three threads with messages (one thread has none), then
+runs: the preflight, rollback on the unmigrated database, the migration twice (same marker rows, messages and threads
+unchanged), `verify_roles` (ALL CHECKS PASS, no data left behind), grants and RLS checks (anon has no access, a third
+user sees nothing and cannot mark, an earlier timestamp leaves the marker, a future timestamp stores server time), the
+backfill (every pre-existing thread at 0 unread, the empty thread returns a 0 row), and the rollback (table, functions and
+policies gone, messages and threads unchanged). Property 24 generates 60 random worlds (seeded; `CB_SEED`, `CB_RUNS`):
+threads, messages and mark calls (earlier, later, equal to a message time, future, and from non-participants). It compares the
+stored markers and every user's `cb_unread_counts()` rows, zeros included, with `unreadCount` and `advanceMarker` from
+`src/lib/unread.ts` (transpiled in memory with sucrase). Mutation checks apply seven broken variants (counts own messages,
+`>=`, marker can move back, no server-clock cap, third user reads counts, non-participant can mark, backfill marks nothing
+read); each makes Property 24 or the backfill check fail. Run it with
+`$env:CB_ISO_DIR = "$env:TEMP\cb-iso"; node supabase\isolated-test\messagereads.mjs`. Result: **67 passed, 0 failed**.
+Two draft bugs were found and fixed in `stage11_message_reads_verify_roles.sql`: check V3 required `anon` to have no
+SELECT on `messages` and `message_threads`, but Supabase's default privileges give `anon` SELECT (RLS denies the rows), so it now
+checks only INSERT, UPDATE and DELETE; and V7, V9 and V10 read the stored marker in the same SQL statement that wrote it,
+so the sub-select used the old snapshot, and the mark now runs in its own statement first.

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/reactionState";
 import { isPostingActive } from "@/lib/lifecycle";
 import { validatePostingEdit } from "@/lib/postingInput";
+import { categoryKind } from "@/lib/postingKinds";
 
 /**
  * Owner edit and delete of a posting.
@@ -36,7 +37,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   // Read as the viewer: a deleted or hidden posting is not returned at all.
   const { data: row } = await supabase
     .from("postings")
-    .select("id, author_id, expires_at, event_date, end_date, end_time, time_zone, lat, lng, deleted_at")
+    .select("id, author_id, expires_at, event_date, event_time, end_date, end_time, rsvp_url, time_zone, lat, lng, deleted_at, category:categories(slug)")
     .eq("id", id)
     .maybeSingle();
   if (!row || row.author_id !== user.id) return fail(404, "not_found", "This posting wasn't found.");
@@ -47,19 +48,44 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   };
   if (!isPostingActive(lifecycle)) return fail(409, "ended", "This posting has ended, so it can't be edited. You can still delete it.");
 
-  const v = validatePostingEdit(raw, { expiresAt: lifecycle.expiresAt, timeZone: lifecycle.timeZone, lat: lifecycle.lat, lng: lifecycle.lng }, new Date());
+  const v = validatePostingEdit(raw, { expiresAt: lifecycle.expiresAt, timeZone: lifecycle.timeZone, lat: lifecycle.lat, lng: lifecycle.lng, eventDate: lifecycle.eventDate, endDate: lifecycle.endDate, endTime: lifecycle.endTime }, new Date());
   if (!v.ok) return fail(400, "invalid", v.error);
   const e = v.value;
 
   const { data: cat } = await supabase.from("categories").select("id").eq("slug", e.categorySlug).single();
   if (!cat) return fail(400, "invalid", "Invalid category.");
 
+  // Date columns by kind, in one update. Everything above is validation: a rejection never reaches the update.
+  const newKind = categoryKind(e.categorySlug);
+  let eventDate = e.eventDate, eventTime = e.eventTime, endDate = e.endDate, endTime = e.endTime;
+  if (newKind === "listing") {
+    // Listing: only end_date (the deadline). A stored legacy event_date (and its times) stays as stored unless the
+    // client reports the replacement notice was shown (`replaceLegacyEventDate: true`); then all three are cleared.
+    const storedEventDate = (row.event_date as string | null) ?? null;
+    const replace = (raw as Record<string, unknown>).replaceLegacyEventDate === true;
+    const oldSlug = (row.category as { slug?: string } | null)?.slug;
+    const fromEvent = oldSlug ? categoryKind(oldSlug) !== "listing" : false;
+    if (storedEventDate && !replace) {
+      eventDate = storedEventDate;
+      eventTime = fromEvent ? null : ((row.event_time as string | null) ?? null);
+      endTime = fromEvent ? null : ((row.end_time as string | null) ?? null);
+    } else {
+      eventDate = null; eventTime = null; endTime = null;
+    }
+    if (fromEvent) { eventTime = null; endTime = null; } // event to listing drops the times (Req 11.6)
+  } else if (newKind === "event-optional" && !eventDate) {
+    eventTime = null; endDate = null; endTime = null; // no date: all four null
+  }
+  const patch: Record<string, unknown> = {
+    title: e.title, body: e.body, category_id: cat.id,
+    event_date: eventDate, event_time: eventTime, end_date: endDate, end_time: endTime, place_label: e.placeLabel,
+  };
+  // Leave the stored link untouched when the submitted one is the same value (Req 11.7).
+  if (e.rsvpUrl !== ((row.rsvp_url as string | null) ?? null)) patch.rsvp_url = e.rsvpUrl;
+
   const { data: updated, error } = await supabase
     .from("postings")
-    .update({
-      title: e.title, body: e.body, category_id: cat.id, rsvp_url: e.rsvpUrl,
-      event_date: e.eventDate, event_time: e.eventTime, end_date: e.endDate, end_time: e.endTime, place_label: e.placeLabel,
-    })
+    .update(patch)
     .eq("id", id)
     .eq("author_id", user.id)
     .select("id");

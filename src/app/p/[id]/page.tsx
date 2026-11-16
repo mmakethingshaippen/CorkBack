@@ -21,6 +21,8 @@ import { CorkBand } from "@/components/ui/CorkBand";
 import { getHiddenNotice, hasPendingReport, listReplies } from "@/lib/moderationData";
 import { ShareButton } from "@/components/ui/ShareButton";
 import { isPostingActive } from "@/lib/lifecycle";
+import { fieldSpec } from "@/lib/postingKinds";
+import { formatDateOnly, onBoardUntilLine } from "@/lib/postingDisplay";
 import { createClient } from "@/lib/supabase/server";
 import { getFriendPlans, getViewerReaction } from "@/lib/reactions";
 import { isUuid } from "@/lib/reactionState";
@@ -68,18 +70,17 @@ export default async function PostingPage({
 
   // event_date is a calendar date: format it without shifting time zones.
   const formatDate = (d: string) =>
-    new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", {
-      timeZone: "UTC",
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
+    formatDateOnly(d, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const spec = fieldSpec(posting.categorySlug, { hasEventDate: Boolean(posting.eventDate) });
+  const isListing = spec.kind === "listing";
   const dateLabel = posting.eventDate ? formatDate(posting.eventDate) : null;
+  // A listing's end_date is its Deadline (own row); only events show an "Ends" row.
+  const deadlineLabel = isListing && posting.endDate && spec.cardPrefix ? `${spec.cardPrefix} ${formatDate(posting.endDate)}` : null;
   const endParts: string[] = [];
-  if (posting.endDate && posting.endDate !== posting.eventDate) endParts.push(formatDate(posting.endDate));
+  if (!isListing && posting.endDate && posting.endDate !== posting.eventDate) endParts.push(formatDate(posting.endDate));
   if (posting.endTime) endParts.push(`${endParts.length ? "at " : ""}${posting.endTime.slice(0, 5)}`);
   const endLabel = endParts.length ? `Ends ${endParts.join(" ")}` : null;
+  const untilLine = active ? onBoardUntilLine(posting) : null;
 
   return (
     <main className="min-h-screen pb-24">
@@ -135,10 +136,17 @@ export default async function PostingPage({
               <ClockIcon className="text-ink/60" /> <dd>{endLabel}</dd>
             </div>
           ) : null}
+          {deadlineLabel ? (
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="text-ink/60" /> <dd>{deadlineLabel}</dd>
+            </div>
+          ) : null}
           <div className="flex items-center gap-2">
             <MapPinIcon className="text-ink/60" /> <dd>{posting.placeLabel}</dd>
           </div>
         </dl>
+
+        {untilLine ? <p className="text-sm text-ink/70">{untilLine}</p> : null}
 
         <p className="whitespace-pre-line leading-relaxed text-ink">{posting.body}</p>
 
@@ -149,7 +157,7 @@ export default async function PostingPage({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-control bg-dark-red px-5 py-3 font-bold text-white"
           >
-            RSVP <ExternalLinkIcon />
+            {spec.actionButton} <ExternalLinkIcon />
           </a>
         ) : null}
 

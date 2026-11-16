@@ -2,13 +2,18 @@ import Link from "next/link";
 import { TopBar } from "@/components/ui/TopBar";
 import { CorkBand } from "@/components/ui/CorkBand";
 import { BottomNav } from "@/components/ui/BottomNav";
-import { MapView } from "@/components/map/MapView";
 import { HomeMap } from "@/components/map/HomeMap";
 import { redirect } from "next/navigation";
-import { attachViewerLikes, listActivePostings } from "@/lib/postings";
+import { attachViewerLikes } from "@/lib/postings";
+import { queryPostingsInBounds } from "@/lib/mapQuery";
+import { boundsForRadius, snapBoundsOutward } from "@/lib/mapBounds";
+import { DEFAULT_RADIUS_MILES } from "@/lib/nearby";
+import type { Posting } from "@/lib/types";
 import { getViewer, getViewerHomePoint } from "@/lib/auth";
 import { viewerFollowedCategorySlugs } from "@/lib/categoryFollows";
 import { AuthHashForwarder } from "@/components/auth/AuthHashForwarder";
+
+const BERKELEY_CENTRE = { lat: 37.8715, lng: -122.273 };
 
 // Public home: local-first map + filterable rail. No account wall for browsing.
 export default async function Home({
@@ -40,18 +45,29 @@ export default async function Home({
 
   const viewer = await getViewer();
 
-  let postings: Awaited<ReturnType<typeof listActivePostings>> = [];
+  // Signed-in viewer's alert home point: the centre of the initial board query
+  // and a map-centering fallback. Never shown publicly.
+  const homePoint = viewer ? await getViewerHomePoint() : null;
+
+  // Initial board: the capped cards-mode query for the snapped box around the
+  // alert home point (or Berkeley) at the default radius, no category. The page
+  // no longer loads every active posting.
+  let postings: Posting[] = [];
+  let truncated = false;
   let loadError: string | null = null;
   try {
+    const centre = homePoint ?? BERKELEY_CENTRE;
+    const result = await queryPostingsInBounds({
+      bounds: snapBoundsOutward(boundsForRadius(centre, DEFAULT_RADIUS_MILES)),
+      category: null,
+      mode: "cards",
+    });
     // The viewer's own saved likes, for the card Like buttons.
-    postings = await attachViewerLikes(await listActivePostings(), viewer?.id ?? null);
+    postings = await attachViewerLikes(result.items as Posting[], viewer?.id ?? null);
+    truncated = result.truncated;
   } catch (e) {
     loadError = e instanceof Error ? e.message : "Could not load postings.";
   }
-
-  // Signed-in viewer's alert home point — used only as a map-centering fallback
-  // when device location is unavailable. Never shown publicly.
-  const homePoint = viewer ? await getViewerHomePoint() : null;
   const followedCategories = await viewerFollowedCategorySlugs(viewer?.id ?? null);
 
   return (
@@ -68,7 +84,7 @@ export default async function Home({
             </p>
           ) : null}
           <h1 className="text-2xl font-bold text-paper">The world, posted locally.</h1>
-          <p className="mt-1 text-paper/90">Paper flyers. Real places. What&apos;s happening around you.</p>
+          <p className="mt-1 hidden text-paper/90 sm:block">Paper flyers. Real places. What&apos;s happening around you.</p>
         </CorkBand>
       </div>
 
@@ -98,16 +114,8 @@ export default async function Home({
             <p className="mt-1 text-sm text-ink/80">{loadError}</p>
           </div>
         ) : (
-          <HomeMap postings={postings} homePoint={homePoint} signedIn={viewer !== null} followedCategories={followedCategories} />
+          <HomeMap postings={postings} truncated={truncated} homePoint={homePoint} signedIn={viewer !== null} followedCategories={followedCategories} />
         )}
-      </section>
-
-      {/* Secondary: the world map, not the starting view. */}
-      <section className="px-4 pt-8">
-        <h2 className="mb-2 text-sm font-bold text-ink/70">Explore the world</h2>
-        <div className="h-64 overflow-hidden rounded-card border border-board">
-          <MapView postings={postings} />
-        </div>
       </section>
 
       <BottomNav />

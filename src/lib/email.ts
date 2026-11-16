@@ -1,6 +1,7 @@
 import "server-only";
 import { Resend } from "resend";
 import type { Posting } from "./types";
+import { fieldSpec } from "./postingKinds";
 
 /**
  * Resend email — server only. RESEND_API_KEY is read here and NEVER logged or
@@ -21,23 +22,51 @@ export function resendConfigured(): boolean {
 
 export interface AlertEmailInput {
   to: string;
-  posting: Pick<Posting, "id" | "title" | "eventDate" | "eventTime" | "placeLabel" | "categorySlug">;
+  posting: Pick<Posting, "id" | "title" | "eventDate" | "eventTime" | "placeLabel" | "categorySlug"> &
+    Partial<Pick<Posting, "endDate">>;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "Dec 1" from a YYYY-MM-DD (or ISO timestamp's date part), with no timezone shift. null if invalid. */
+function shortMonthDay(value: string | null | undefined): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((value ?? "").trim());
+  if (!m) return null;
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const d = new Date(Date.UTC(Number(m[1]), month - 1, day));
+  if (d.getUTCFullYear() !== Number(m[1]) || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
+  return `${MONTHS[month - 1]} ${day}`;
+}
+
+/** The date line for the email, or null when there is nothing safe to show. */
+function alertDateLine(posting: AlertEmailInput["posting"]): string | null {
+  const spec = fieldSpec(posting.categorySlug);
+  const time = posting.eventTime ? String(posting.eventTime) : "";
+
+  if (posting.eventDate) {
+    // Includes legacy listing postings that still carry an event date.
+    if (!shortMonthDay(posting.eventDate)) return null;
+    return `Date: ${posting.eventDate}${time ? ` at ${time}` : ""}`;
+  }
+  if (spec.kind === "listing") {
+    const day = shortMonthDay(posting.endDate);
+    return spec.cardPrefix && day ? `${spec.cardPrefix} ${day}` : null;
+  }
+  if (spec.kind === "event-optional") return null;
+  return time ? `Time: ${time}` : "Date: see posting";
 }
 
 /** Build the subject + text + html for a matched-posting alert. */
 export function buildAlertEmail(posting: AlertEmailInput["posting"]) {
   const link = `${appUrl()}/p/${posting.id}`;
-  const dateLine = posting.eventDate
-    ? `Date: ${posting.eventDate}${posting.eventTime ? ` at ${posting.eventTime}` : ""}`
-    : posting.eventTime
-      ? `Time: ${posting.eventTime}`
-      : "Date: see posting";
+  const dateLine = alertDateLine(posting);
   const subject = `New on CorkBack: ${posting.title}`;
   const text = [
     `A new posting matches one of your alerts.`,
     ``,
     posting.title,
-    dateLine,
+    ...(dateLine ? [dateLine] : []),
     `Place: ${posting.placeLabel || "see posting"}`,
     ``,
     `View it: ${link}`,
@@ -48,7 +77,7 @@ export function buildAlertEmail(posting: AlertEmailInput["posting"]) {
     <div style="font-family:system-ui,sans-serif;color:#1E1E1C">
       <p>A new posting matches one of your alerts.</p>
       <h2 style="margin:0 0 4px">${escapeHtml(posting.title)}</h2>
-      <p style="margin:0">${escapeHtml(dateLine)}</p>
+      ${dateLine ? `<p style="margin:0">${escapeHtml(dateLine)}</p>` : ""}
       <p style="margin:0 0 12px">Place: ${escapeHtml(posting.placeLabel || "see posting")}</p>
       <p><a href="${link}" style="color:#1F2E4D;font-weight:bold">View the posting</a></p>
       <p style="font-size:12px;color:#8a857c">You received this because it matched a CorkBack alert you created. Your alert's location and radius are private and are never shared.</p>
