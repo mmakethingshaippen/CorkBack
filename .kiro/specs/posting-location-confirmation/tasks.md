@@ -6,6 +6,8 @@ TypeScript on Next.js 15, React 19, Supabase and MapLibre, tested with vitest an
 
 Stage order: pure modules first (draft state machine, approximate pin, normalizers, contact and leak detection, geocoder query and config, labels), then the server contracts (validators, routes, geocoder route with its shared store, scan route), then the stage 14 SQL with its local database tests, then the UI, then the browser checks, then the release preparation.
 
+Stages 0 to 6 are complete. Stage 7 (tasks 13 to 15) is a follow-up on the same branch that routes the home-page search and the alerts lookup through the shared `/api/geocode` service (adding a `purpose` parameter and an anonymous place-search path), adds a shared additive anonymous rate limit in a new, additive `stage15` migration, keeps a private-home address off public Nominatim, audits approximate-mode privacy and copy, corrects the release checklist against the actual SQL object names, and re-verifies the branch and refreshes the protected preview. Stage 7 does not reopen stages 0 to 6 or the stage 14 SQL.
+
 Rules that apply to every task (Requirements 16, 17, 19, 20):
 
 - No SQL is applied to any production database. The stage 14 SQL (preflight, migration, role-based verify, rollback) is prepared and exercised only in the local embedded database under `supabase/isolated-test` (`CB_ISO_DIR`). The production migration, the production deployment and the setting of production environment variables stay pending the Owner's review.
@@ -121,7 +123,7 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
     - Add `deviceLocation` example tests with a stub navigator for granted, denied, unavailable, timeout and absent
     - _Requirements: 6.2, 6.3, 7.5, 11.7, 11.8, 13.13, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.8, 17.9, 17.10_
 
-- [~] 2. Checkpoint - Stage 1
+- [x] 2. Checkpoint - Stage 1
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 3. Stage 2: Server contracts
@@ -195,7 +197,7 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
     - `src/app/api/scan/extract/route.test.ts`: expect `addresses` in the response (`[]` for old-style model output), add a case with three addresses and one with a malformed `addresses` value, assert one `fetch` call only and no coordinates, assert the prompt names `addresses` and the five kinds
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [~] 4. Checkpoint - Stage 2
+- [x] 4. Checkpoint - Stage 2
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 5. Stage 3: Stage 14 SQL and local database tests
@@ -223,7 +225,7 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
     - Set up `CB_ISO_DIR` as in `supabase/isolated-test/README.md`, run `node supabase\isolated-test\location.mjs` and the existing `run.mjs` to confirm nothing regressed, and record the commands, the counts and the result in `BUILD_LOG.md`. If the local database cannot run, record exactly what is blocked and mark the SQL untested. Apply nothing to production
     - _Requirements: 16.3, 16.6_
 
-- [~] 6. Checkpoint - Stage 3
+- [x] 6. Checkpoint - Stage 3
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 7. Stage 4: User interface and copy
@@ -255,7 +257,7 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
     - `src/lib/locationGuards.test.ts`: the location modules and `LocationPicker.tsx` import none of `boardStorage`, `geoPermission`, `HomeMap`, `nearby`. `navigator.geolocation` appears only in `deviceLocation.ts` within the posting flow. `clampPinNudge` and `MAX_NUDGE_METERS` are not exported by `domain.ts` and not referenced outside `__testing__`. The retired phrases are absent from `src`, `README.md` and `DEMO_PLAN.md` (the guard test file itself is excluded from the scan, and builds the phrases from fragments). `package.json` has no new dependency. `geocoderStore.ts` and `SUPABASE_SERVICE_ROLE_KEY` are not referenced from any file under `src/components` or any `"use client"` file. `LocationPicker.tsx` has no `onChange` handler that calls `fetch`
     - _Requirements: 4.2, 7.2, 7.7, 7.9, 12.8, 14.7, 16.9, 19.5, 20.8_
 
-- [~] 8. Checkpoint - Stage 4
+- [x] 8. Checkpoint - Stage 4
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 9. Stage 5: Browser checks
@@ -272,10 +274,10 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
     - Build in a scratch copy without `.env.local`, install Playwright core in a scratch folder, run `scenarios.mjs` and `pages.mjs`, remove the `node_modules` junction before deleting the copy, and record the results in `BUILD_LOG.md`. If Edge or Playwright cannot run, record exactly what is blocked and mark browser checks untested
     - _Requirements: 16.4, 17.11_
 
-- [~] 10. Checkpoint - Stage 5
+- [x] 10. Checkpoint - Stage 5
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Stage 6: Release preparation
+- [x] 11. Stage 6: Release preparation
   - [x] 11.1 Run the full checks
     - `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`. Fix failures that come from this change. Run `git diff --name-only main` and confirm that `next-env.d.ts` and `supabase/.temp/` are not part of the branch diff. Record the counts in `BUILD_LOG.md`
     - _Requirements: 16.5, 16.8, 16.9_
@@ -284,12 +286,86 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
     - Note the residual risk that the home page town search and the alerts lookup call Nominatim directly and are outside the shared throttle
     - Note that the production migration, the production environment variables and the production deployment are pending the Owner's review
     - _Requirements: 16.6, 19.10_
-  - [-] 11.3 Prepare the protected preview
+  - [x] 11.3 Prepare the protected preview
     - Build a Vercel preview of the final branch commit in demo mode: Supabase variables empty, no `GEMINI_API_KEY`, no geocoder variables, no production connection. Confirm Deployment Protection is on, and record the deployment id, the commit and the protection status in `BUILD_LOG.md`. Do not deploy to production, do not merge to `main`, do not apply SQL
     - _Requirements: 16.4, 16.6, 16.7_
 
-- [~] 12. Final checkpoint - Ensure all tests pass, ask the user if questions arise.
+- [x] 12. Final checkpoint - Ensure all tests pass, ask the user if questions arise.
   - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 13. Stage 7: One geocoder for every lookup, private-home safety, approximate-mode audit
+  - Stages 0 to 6 are complete and are NOT reopened. This stage starts from `feature/posting-location-confirmation` at `e0bf7d1` (a direct child of `origin/main` at `40ac4ad`). Keep working on that branch. Add no dependency. Keep `next-env.d.ts` and `supabase/.temp/` out of every commit. New SQL (stage15) is additive, tested only in `supabase/isolated-test`, and stays pending the Owner's review.
+  - [x] 13.1 Confirm the branch is current before Stage 7 work
+    - Run `git fetch`, then `git log --oneline origin/main..HEAD` and `git log --oneline HEAD..origin/main`. Confirm HEAD (`e0bf7d1` or later) contains every `origin/main` commit (`40ac4ad`) and that `HEAD..origin/main` is empty. Local `main` being behind at `7a273b5` is irrelevant. Record the result in `BUILD_LOG.md`. Make no change to `main`
+    - _Requirements: 16.5_
+  - [x] 13.2 Add the purpose resolver and the anonymous-id helper
+    - Add a small pure `resolvePurpose(raw: string | null): "place" | "posting"` (any value other than `place` resolves to `posting`) in `src/lib/geocodeQuery.ts` or a new `src/lib/geocodePurpose.ts`. Add a server helper to read the client IP from `x-forwarded-for` (first entry), else `x-real-ip`, else a fixed fallback string, and to compute the Anonymous_Client_Id as `cacheKey(ip, "anon", secret)` (reuse the HMAC helper). The raw IP is used only to compute the id and is never stored or logged
+    - _Requirements: 21.1, 21.8, 21.11_
+  - [x]* 13.3 Write property tests for the purpose resolver and the anonymous id
+    - **Property 26: Auth depends only on the resolved purpose** (resolver part)
+    - **Property 29: The anonymous client id is an IP HMAC that never contains the IP**
+    - **Validates: Requirements 21.1, 21.8, 21.11**
+    - Files: `src/lib/geocodeQuery.cache.test.ts` (extend) and/or `src/lib/geocodeAnonId.test.ts`
+  - [x] 13.4 Extend the geocoder store with the anonymous limit
+    - In `src/lib/geocoderStore.ts` add `takeAnonSlot(clientHash)` (calls `cb_geocoder_take_anon_slot`, returns its boolean, throws on any database error so the route fails closed) and `purgeAnonExpired()` (calls `cb_geocoder_purge_anon_limit`). Call `purgeAnonExpired` best-effort inside `cachePut` alongside `purgeExpired`. Server only, service role client only
+    - _Requirements: 24.3, 24.5, 24.7, 24.8_
+  - [x] 13.5 Extract the shared lookup core
+    - Create `src/lib/geocodeLookup.ts` (server only) with `runGeocodeLookup({ query, privateHome, config, store })` that runs the private-home guard, cache read, `takeSlot`, one upstream `fetch`, `normalizeNominatim` and `cachePut`, returning `{ state, matches? }`. Move this core out of `src/app/api/geocode/route.ts` so the route wrapper keeps only auth, purpose, query prep and the rate limits. Behavior for the existing signed-in path is unchanged
+    - _Requirements: 21.6, 21.7, 22.1, 22.4, 22.7_
+  - [x] 13.6 Update the geocode route for purpose, anonymous limit and the private-home guard
+    - In `src/app/api/geocode/route.ts`: parse `purpose` with `resolvePurpose`; for `purpose=posting` keep the 401 and the per-user cap; for `purpose=place` skip the sign-in gate and, after query prep and the private-home guard, compute the Anonymous_Client_Id and call `store.takeAnonSlot(anonId)` (false → 429 `rate_limited`, throw/missing → 503 `unavailable`, both with no upstream call). Refuse a private-home-flagged query with 422 `private_home_refused` when `config.publicNominatim` is true, deciding from config only. Then call `runGeocodeLookup`. Log only `[geocode] <state> <status> <purpose>` — never the IP, the id, the query, the key or the body
+    - _Requirements: 21.2, 21.3, 21.6, 21.9, 21.10, 21.12, 22.1, 22.4, 22.7, 24.8_
+  - [x]* 13.7 Write route tests for purpose, throttle/cache sharing, the private-home guard and the anonymous limit
+    - **Property 26: Auth depends only on the resolved purpose** (route part)
+    - **Property 27: Every upstream call is throttled, and the cache is shared across callers and purposes**
+    - **Property 28: A private-home lookup is refused from config alone when the provider is public Nominatim**
+    - **Property 30: The anonymous limit and a missing limit store both stop upstream traffic**
+    - **Validates: Requirements 21.2, 21.3, 21.6, 21.7, 21.9, 21.10, 22.1, 22.3, 22.4, 22.7, 24.8**
+    - File: `src/app/api/geocode/route.test.ts` (extend; stub `takeAnonSlot`, generate purpose, sign-in state, config and store states; add console-spy cases for Requirements 21.12 and 23.5)
+  - [x] 13.8 Route the home-page search through the shared service
+    - In `src/components/map/HomeMap.tsx` replace the direct `nominatim.openstreetmap.org` fetch in `searchTown` with `fetch("/api/geocode?purpose=place&q=" + encodeURIComponent(q))`, read `matches[0].point` on `state === "ok"`, keep the "Showing {q}" flow and `writeSavedCenter`, and map empty/`rate_limited`/`busy`/`unavailable` to the existing unavailable message. No autocomplete; the search still runs only on submit. `HomeMap` imports no server-only module and stays a client component
+    - _Requirements: 21.4, 21.13, 21.14_
+  - [x] 13.9 Route the alerts town lookup through the shared service
+    - In `src/app/api/alerts/route.ts` replace `geocodeTown`'s direct Nominatim fetch with `runGeocodeLookup({ query, privateHome: false, config: resolveGeocoderConfig(process.env), store: createGeocoderStore(createAdminClient()) })` and resolve the center from `matches[0].point`. When the config is disabled, keep the existing "Could not find a town…" error so a map point still works. No `nominatim` literal remains
+    - _Requirements: 21.5, 21.6, 21.7_
+  - [x] 13.10 Private-home behavior and approximate-mode copy in the picker
+    - In `src/components/map/LocationPicker.tsx`: before any private-home lookup, show the explanation "A private home address is not sent to a public map search service. Place the pin on the map, or use Use my location if you are there." When a private-home lookup returns `private_home_refused`, switch that place to manual placement only. Add the separate warning "A flyer image or words in your posting can still show an address. The approximate pin does not hide what the image or text says." Audit and reword the private-home explanation (Requirement 9.3) and the detail approximate note (Requirement 9.10) so no wording claims the pin guarantees anonymity, keeping "about a quarter mile (400 m)" and "The street address is not shown". These notes are navy/neutral, not the dark-red action
+    - _Requirements: 22.2, 22.3, 22.5, 22.6, 23.6, 23.7, 23.8_
+  - [x] 13.11 Update the detail-page approximate note copy
+    - In `src/app/p/[id]/page.tsx` reword the approximate-location note so it describes an approximate area without claiming anonymity, consistent with `locationNote` in `src/lib/postingLocation.ts`. Keep "The exact address is not shown." Update `locationNote` text if needed
+    - _Requirements: 23.6, 23.8, 9.10, 9.11_
+  - [x]* 13.12 Property test the approximate-mode surfaces and extend the guard test
+    - **Property 31: An approximate posting exposes only the approximate pin on every surface**
+    - **Validates: Requirements 23.1, 23.2, 23.3**
+    - Files: `src/lib/postingLocation.draft.test.ts` or `src/lib/postingLocation.geo.test.ts` (extend) and `src/app/api/postings/route.location.test.ts` (stored-row surface)
+    - Extend `src/lib/locationGuards.test.ts`: no `src` file fetches `nominatim.openstreetmap.org` (zero occurrences in `HomeMap.tsx` and `alerts/route.ts`); `HomeMap.tsx` imports no `geocoderStore`, `geocodeLookup` or `server-only`; the location modules import nothing from `HomeMap`; the approximate copy contains no anonymity-guarantee phrasing and still contains the kept statements
+    - _Requirements: 21.4, 21.5, 21.14, 23.1, 23.2, 23.6_
+  - [x] 13.13 Write the stage15 SQL (preflight, migration, verify, rollback)
+    - `supabase/stage15_geocoder_anon_limit_preflight.sql` (read-only; expects every stage15 object absent; confirms the stage 14 objects are present and unchanged), `supabase/stage15_geocoder_anon_limit.sql` (one transaction; additive; refuses to start if any stage 14 object is missing; creates `cb_geocoder_anon_limit` table, `cb_geocoder_take_anon_slot(text,integer,integer)` and `cb_geocoder_purge_anon_limit()` with RLS on, no policies, `revoke all from public, anon, authenticated`, grants to `service_role` only; asserts stage 14 is unchanged via an inventory check), `supabase/stage15_geocoder_anon_limit_verify.sql` (role-based, `ALL CHECKS PASS`, rolls itself back; checks the anon/authenticated refusals, service_role access, RLS/no-policy, the column list, the hex key check, the 30/window limit and the purge), and `supabase/stage15_geocoder_anon_limit_rollback.sql` (drops only the stage15 objects; safe to run twice). DRAFT headers like stage 14
+    - _Requirements: 24.1, 24.2, 24.3, 24.4, 24.5, 24.6, 24.9_
+  - [x] 13.14 Extend the isolated-database harness for stage15
+    - Extend `supabase/isolated-test/location.mjs` to run the stage15 preflight, migration, verify (require `ALL CHECKS PASS` and a self-rollback), a stage 14 inventory/`md5` check before and after (unchanged), the rollback, and the migration again (re-runnable). Add PostgREST/role checks: `anon` and `authenticated` refused on the stage15 table and both functions; `service_role` allowed. Update `supabase/isolated-test/README.md`
+    - _Requirements: 24.2, 24.6, 24.9_
+  - [x]* 13.15 Write the stage15 database property tests
+    - **Property 32: The anonymous slot limit is atomic and resets per window (isolated database)**
+    - **Property 33: The anonymous-limit purge deletes only expired rows (isolated database)**
+    - **Validates: Requirements 24.1, 24.3, 24.5, 21.9**
+    - File: `supabase/isolated-test/location.mjs` (extend). Property 32 opens real connections, runs 100 randomized rounds of hit sequences per hashed id (including concurrent callers for one id) with window resets, and asserts at most 30 trues per window, separate counting per id, and reset after the window. Property 33 generates rows with varied `window_start` and asserts the purge deletes exactly the expired rows
+  - [x] 13.16 Run the local database and unit tests and record the results
+    - Set `CB_ISO_DIR` as in `supabase/isolated-test/README.md`, run `node supabase\isolated-test\location.mjs` and the existing `run.mjs`, and run `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`. Record the commands, counts and results in `BUILD_LOG.md`. If the local database cannot run, record exactly what is blocked and mark the stage15 SQL untested. Apply nothing to production
+    - _Requirements: 24.9, 16.3_
+  - [x] 13.17 Correct the release checklist against the SQL
+    - In `.kiro/specs/posting-location-confirmation/release-checklist.md` verify every stage 14 object name against `supabase/stage14_posting_location*.sql` and correct any mismatch. The actual stage 14 objects are: column `postings.location_precision`; function `public.cb_update_posting_location(uuid, double precision, double precision, text, text)`; table `public.cb_geocoder_throttle`; function `public.cb_geocoder_take_slot(integer)`; table `public.cb_geocoder_cache`; function `public.cb_geocoder_purge_cache()`. Add the stage15 files to the SQL order (preflight, migration, verify, rollback) after stage 14. Fix stale deployment ids and URLs: the current production and code rollback target is `dpl_9PELR85c5x7oYKsYuYegUzeTQvBN` at commit `40ac4ad`; the protected preview is `dpl_BxD3BA8ABE31cKAAHK7vA6cMjghh`. Add `GEOCODER` env-var notes for the anonymous limit if any are new. Update the residual-risk section to say the home and alerts lookups now go through the shared throttle
+    - _Requirements: 16.1, 16.2, 16.6, 19.10, 24.2_
+  - [~] 13.18 Verify the branch includes origin/main and prior release fixes, and refresh the protected preview
+    - Re-run the branch verification of 13.1 at merge time: confirm `feature/posting-location-confirmation` contains current `origin/main` and all previous release fixes, and report any differences (`git log --oneline HEAD..origin/main` must be empty; list anything that is not). Then build a fresh Vercel preview of the final branch commit in demo mode (Supabase and geocoder variables empty, no production connection), confirm Deployment Protection is on, and record the deployment id, the commit and the protection status in `BUILD_LOG.md`. The protected preview is `dpl_BxD3BA8ABE31cKAAHK7vA6cMjghh` until refreshed. Do not deploy to production, do not merge to `main`, do not apply SQL
+    - _Requirements: 16.4, 16.5, 16.6, 16.7_
+
+- [~] 14. Checkpoint - Stage 7
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [~] 15. Final checkpoint - Stage 7
+  - Ensure all tests pass (unit, isolated-database, and the browser harness if it can run), confirm nothing was applied to production and `main` is untouched, and ask the user if questions arise.
 
 ## Notes
 
@@ -315,7 +391,14 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
     { "id": 10, "tasks": ["9.4"] },
     { "id": 11, "tasks": ["11.1"] },
     { "id": 12, "tasks": ["11.2"] },
-    { "id": 13, "tasks": ["11.3"] }
+    { "id": 13, "tasks": ["11.3"] },
+    { "id": 14, "tasks": ["13.1", "13.2", "13.4", "13.13"] },
+    { "id": 15, "tasks": ["13.3", "13.5", "13.14"] },
+    { "id": 16, "tasks": ["13.6", "13.9", "13.15"] },
+    { "id": 17, "tasks": ["13.7", "13.8", "13.10", "13.11"] },
+    { "id": 18, "tasks": ["13.12", "13.17"] },
+    { "id": 19, "tasks": ["13.16"] },
+    { "id": 20, "tasks": ["13.18"] }
   ]
 }
 ```

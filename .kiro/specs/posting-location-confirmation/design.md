@@ -813,3 +813,227 @@ PBT is appropriate for the pure modules: validators, reducer, approximate pin, n
 
 **Release.** Work happens on `feature/posting-location-confirmation`. Checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`. A protected Vercel preview is built in demo mode (empty Supabase variables, no production connection). A release checklist (`.kiro/specs/posting-location-confirmation/release-checklist.md`) lists: apply SQL first, then the code release, live checks with disposable accounts and `[TEST]` postings, real-phone checks, and rollback in the order code first and SQL second. The production migration and the production deployment stay pending the Owner's review.
 
+
+---
+
+# Stage 7 addendum: one geocoder for every lookup, private-home safety, and an approximate-mode privacy audit
+
+This addendum extends the design for Requirements 21 to 24. It is additive: the stage 14 SQL, the existing `/api/geocode` contract and the picker are unchanged except where stated. Stages 0 to 6 are complete and are not reopened. The new work branches from `feature/posting-location-confirmation` at `e0bf7d1`, which is a direct child of `origin/main` at `40ac4ad`.
+
+## Overview of the change
+
+Four things change:
+
+1. **One service for every lookup.** `HomeMap.searchTown` (browser) and `geocodeTown` in `src/app/api/alerts/route.ts` (server) stop calling `nominatim.openstreetmap.org` directly. Both call `/api/geocode?purpose=place&q=…` instead, so every geocoding request shares the stage 14 throttle and cache. This closes the residual risk recorded under Requirement 19.10.
+2. **A `purpose` parameter and an anonymous path.** `/api/geocode` gains `purpose=place` (anonymous allowed, public-place search for the board and alerts) and `purpose=posting` (signed-in, the picker as today). Browsing CorkBack never requires an account, so `purpose=place` must work signed out.
+3. **A shared, additive anonymous rate limit.** Anonymous callers have no user id and the per-instance `userCap` cannot bound traffic across Vercel instances, so a new Supabase object (stage15) counts `purpose=place` lookups per hashed client IP. The raw IP is never stored or logged.
+4. **Private-home safety and an approximate-mode privacy audit.** A private-residence lookup is never sent to public Nominatim; the picker explains this before any query is sent and offers manual placement unless a keyed non-public provider is configured. The copy is audited so no wording claims a displaced pin guarantees anonymity, and a separate warning says a flyer image or description can still reveal an address.
+
+## Findings from reading the code (Stage 7)
+
+| Area | What the code does today | Consequence |
+|---|---|---|
+| Home-page search | `HomeMap.searchTown` (`src/components/map/HomeMap.tsx`, around line 504) does `fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=…", { headers: { "Accept-Language": "en" } })` straight from the browser, then uses `rows[0].lat/lon`. No User-Agent, no throttle, no cache. | Must call `/api/geocode?purpose=place` instead and map the returned `matches` (its first match's `point`) to the existing `{ lat, lng, name }` flow. `HomeMap` stays a client component; it imports no server-only module. |
+| Alerts town lookup | `geocodeTown` in `src/app/api/alerts/route.ts` does `fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=…", { headers: { "User-Agent": "CorkBack/1.0 (alerts geocode)" } })` on the server. | Must call the shared geocoder path with `purpose=place`. On the server this can call the route's own handler helper or reuse `resolveGeocoderConfig` + `GeocoderStore` + the shared throttle. The chosen approach (below) extracts the lookup core so both the route and the alerts path share one throttled, cached, private-safe implementation. |
+| `/api/geocode` today | `src/app/api/geocode/route.ts` is signed-in only (401 when no user), reads `q`, runs config → query → per-user cap → cache → `takeSlot(3000)` → one `fetch` → normalize → `cachePut`. It logs only `[geocode] <state> <status>`. | Add `purpose`; branch auth on it; add the anonymous limit before `takeSlot` for `purpose=place`; add the private-home guard. The signed-in `purpose=posting` path is unchanged. |
+| Client IP | Vercel/Next put the client IP in forwarded headers (`x-forwarded-for`, `x-real-ip`). `req` is a Web `Request`; the first entry of `x-forwarded-for` is the client. | The anonymous id is `HMAC(secret, firstForwardedIp)`. No raw IP is stored or logged. A missing/garbled header falls back to a fixed id so the bucket is shared, never bypassed. |
+| Config | `resolveGeocoderConfig` already exposes `publicNominatim: boolean` and `apiKey: {param,value} | null`. | The private-home guard needs no new config: a private-residence lookup is permitted only when `!publicNominatim && apiKey !== null` is not required — the rule is `publicNominatim === false` means a keyed non-public provider, which already implies `apiKey` may be set. The guard uses `config.publicNominatim`. |
+| Stage 14 SQL | Adds the throttle and cache. No anonymous-limit object. | The anonymous limit is a new, additive stage15 object. Stage 14 (already tested) is not reopened. |
+
+## Key decisions (Stage 7)
+
+| Decision | Choice | Why |
+|---|---|---|
+| Where the alerts and home lookups go | Through `/api/geocode?purpose=place`. The home page fetches the route over the network; the alerts route calls a shared server-side lookup core (`runGeocodeLookup`) that applies the same config, throttle, cache and private-home guard. | One throttle and one cache for the whole app. The home page stays a client component with no server import. |
+| New SQL vs extend stage 14 | **A new migration `stage15_geocoder_anon_limit`** (preflight, migration, verify, rollback). | Stage 14 is already written and tested in the isolated DB. Reopening it would force re-verification of every stage 14 object. Additive stage15 keeps stage 14 frozen. |
+| Anonymous key | `HMAC-SHA256(GEOCODER_CACHE_SECRET, clientIp)` (hex), same secret approach as the cache key. Raw IP never stored or logged. | Privacy-preserving, shared across instances, no new secret, reuses the audited key approach. |
+| Anonymous limit semantics | At most 30 `purpose=place` lookups per 10 minutes per hashed id, **additive** to the 1 req/s Shared_Throttle. Fail closed (503) if the limit store is missing or errors. | A flood of signed-out searches cannot bypass the policy; a missing stage15 never becomes unlimited anonymous traffic. |
+| Private-home lookup on public Nominatim | **Never sent.** The picker offers manual placement and explains why before any query leaves the browser. A keyed non-public provider (`GEOCODER_URL` host ≠ Nominatim with `GEOCODER_API_KEY`) may receive it. The route refuses a private-home-flagged query against public Nominatim (422 `private_home_refused`) from the config, not the client. | Blocking phone/email does not make an address public. A private home address is personal data and must not be handed to a public service. The server decides, so a bypassed client cannot leak. |
+| Approximate-mode copy | Audit and reword so no copy claims the displaced pin guarantees anonymity. Add a separate warning that a flyer image or description can still reveal an address. | A random pin offset is not anonymity; honest copy avoids a false promise. |
+
+## Components and Interfaces (Stage 7)
+
+### `GET /api/geocode` contract (updated)
+
+Query parameters: `q` (as today) and `purpose` (`place` | `posting`; any other value or absent is treated as `posting`). An optional client flag `home=1` marks a Private_Residence_Lookup for `purpose=posting`; the server decides permission from config, never from the flag alone.
+
+Response body stays `{ state, error?, matches? }`. New states: `rate_limited`, `private_home_refused`.
+
+Order of checks:
+
+1. **Supabase present.** As today: no `NEXT_PUBLIC_SUPABASE_URL` → 503 `unavailable`.
+2. **Purpose.** Parse `purpose`; default to `posting`.
+3. **Auth by purpose.**
+   - `purpose=posting`: resolve the signed-in user; 401 `signed_out` when absent (unchanged).
+   - `purpose=place`: no sign-in required; `userId` may be `null`.
+4. **Config.** `resolveGeocoderConfig(process.env)`; disabled → 503 `unavailable`, no store/upstream call.
+5. **Query.** `prepareGeocodeQuery(q)`: `too_short` → 400 `bad_query`; `contains_contact` → 422 `query_refused`.
+6. **Private-home guard.** When the request is a Private_Residence_Lookup (flag set) and `config.publicNominatim` is true → 422 `private_home_refused`, no store/upstream call. (When `config.publicNominatim` is false, the keyed non-public provider may receive it.)
+7. **Rate limit by purpose.**
+   - `purpose=posting`: the existing per-user cap (`userCap.take(userId)`), 429 `user_limit` on exceed.
+   - `purpose=place`: compute `anonId = cacheKey(clientIp, "anon", config.cacheSecret)` (reuse the HMAC helper with a fixed `"anon"` host label), then call `store.takeAnonSlot(anonId)`. A `false` result → 429 `rate_limited`, no upstream call. A throw or a missing function → 503 `unavailable` (fail closed), no upstream call.
+8. **Cache read.** Shared for all callers (unchanged). Hit → 200 `ok`, no slot, no upstream.
+9. **Shared throttle.** `store.takeSlot(3000)` (unchanged): `null` → 429 `busy`; throw → 503.
+10. **Upstream.** One `fetch` (unchanged).
+11. **Normalize and store.** `cachePut` (unchanged).
+12. 200 `ok`.
+
+Logging: `[geocode] <state> <status> <purpose>` only. Never the raw IP, the `anonId`, the query, the key or the body.
+
+The client IP is read from the first entry of `x-forwarded-for`, else `x-real-ip`, else a fixed fallback string (so a request with no IP shares one bucket). The IP is passed only to `cacheKey` to make `anonId`; it is never stored or logged.
+
+### Shared lookup core (for the alerts route)
+
+```typescript
+// src/lib/geocodeLookup.ts (server only)
+export interface LookupResult { state: State; matches?: PlaceMatch[] }
+/** The config → private-home guard → cache → throttle → fetch → normalize → cache core,
+ *  without the HTTP/auth/rate-limit wrapper. Used by the route and by the alerts path. */
+export async function runGeocodeLookup(args: {
+  query: string; privateHome: boolean; config: GeocoderConfig; store: GeocoderStore;
+}): Promise<LookupResult>;
+```
+
+The route and the alerts route both build `store` from `createAdminClient()` and call `runGeocodeLookup`. The alerts route calls it with `purpose=place` semantics (no sign-in gate) and reads `matches[0].point`. The anonymous rate limit and the per-user cap live in the route wrapper, not in the core, because the alerts route already requires a signed-in user and is naturally bounded by the alert-creation flow. The core still passes through the Shared_Throttle and the cache, which is the policy guarantee Requirement 21.6 asks for.
+
+### `HomeMap.searchTown` (client, updated)
+
+Replace the direct Nominatim `fetch` with `fetch("/api/geocode?purpose=place&q=" + encodeURIComponent(q))`. On `{ state: "ok", matches }`, use `matches[0]` when present (its `point` is `{ lat, lng }`) and keep the existing "Showing {q}" flow and `writeSavedCenter`. On an empty `matches` show the existing not-found message; on `rate_limited`, `busy` or `unavailable` show "Place search is unavailable right now. Please try again." `HomeMap` imports nothing new from the server; it only changes the URL it fetches. No autocomplete is added; the search still runs only on form submit.
+
+### `src/app/api/alerts/route.ts` `geocodeTown` (server, updated)
+
+Replace the direct Nominatim `fetch` with `runGeocodeLookup({ query, privateHome: false, config, store })` using `resolveGeocoderConfig(process.env)` and `createGeocoderStore(createAdminClient())`. When the config is disabled, fall back to the existing "Could not find a town…" error (search off is an acceptable state; alerts can still be set by a map point). Return `matches[0].point` as the center. No direct Nominatim call remains.
+
+### `LocationPicker` private-home behavior (updated)
+
+When the poster checks "This place is a private home", the picker reads whether place search is available for a private home. It is available only when the resolved provider is not public Nominatim. The picker does not hold the server config; it learns the provider state from the first `/api/geocode` response's state (a `private_home_refused` state means public Nominatim) or from a small `GET /api/geocode?purpose=posting&probe=1` that returns `{ state: "ok" | "unavailable" | "private_home_capable": boolean }`. The simpler choice, adopted here: the picker always sends a private-home lookup with `home=1`; if the route answers `private_home_refused`, the picker shows the explanation (Requirement 22.5) and switches that place to manual placement only. Before the poster runs any lookup for a private home, the picker shows the explanation text, so the poster learns the behavior first (Requirement 22.6). The explanation and the new flyer-image warning (Requirement 23.7) are plain navy/neutral notes, not the one dark-red action.
+
+## Data Models (Stage 7)
+
+### stage15 database objects
+
+A new migration `supabase/stage15_geocoder_anon_limit.sql` (with preflight, verify and rollback siblings), additive to stage 14.
+
+| Object | Definition |
+|---|---|
+| `public.cb_geocoder_anon_limit` | `client_hash text primary key check (client_hash ~ '^[0-9a-f]{64}$')`, `window_start timestamptz not null default now()`, `hits integer not null default 0 check (hits >= 0)`. **No raw IP, no user id, no email.** RLS on, no policies. |
+| `public.cb_geocoder_take_anon_slot(p_client_hash text, p_max_hits integer default 30, p_window_ms integer default 600000) returns boolean` | `security definer`, `set search_path = ''`. One atomic upsert: when no row or the row's `window_start` is older than the window, reset `window_start = now()` and `hits = 1` and return `true`; otherwise increment `hits` and return `hits <= p_max_hits`. Execute granted to `service_role` only. |
+| `public.cb_geocoder_purge_anon_limit() returns integer` | `security definer`, `set search_path = ''`; deletes rows whose `window_start` is older than the window (e.g. `now() - interval '10 minutes'`) and returns the count. Execute granted to `service_role` only. |
+
+Privileges mirror the stage 14 geocoder objects: `enable row level security` with no policy, `revoke all … from public, anon, authenticated`, `grant select, insert, update, delete` (table) / `grant execute` (functions) to `service_role` only. The purge runs after each `cachePut` (alongside the stage 14 purge) and on the hourly sweep.
+
+Why a function and not a per-instance counter: Vercel runs many instances and an anonymous caller has no user id, so only a shared store bounds anonymous traffic. One atomic upsert avoids a read-modify-write race. The table is tiny (one row per active hashed id per window) and pruned by the purge, so it does not grow without limit.
+
+### `GeocoderStore` addition
+
+```typescript
+export interface GeocoderStore {
+  // ...existing...
+  /** true when the caller is within the anonymous limit; false when over. Throws on a database error (route fails closed). */
+  takeAnonSlot(clientHash: string): Promise<boolean>;
+  /** deletes anon-limit rows older than the window; returns the count. */
+  purgeAnonExpired(): Promise<number>;
+}
+```
+
+`takeAnonSlot` calls `cb_geocoder_take_anon_slot` and returns its boolean; it throws on any database error so the route answers 503 (fail closed, Requirement 24.8). `cachePut` also calls `purgeAnonExpired` best-effort alongside the existing `purgeExpired`.
+
+## Privacy model (Stage 7 additions)
+
+| Value | Where it exists | Who can see it |
+|---|---|---|
+| Raw client IP | Request header only, in memory during one request. Passed only to `cacheKey` to make `anonId`. | Never stored, never logged, never sent to the browser or upstream. |
+| Anonymous_Client_Id (`anonId`) | A row key in `cb_geocoder_anon_limit` with a count and a window start. | The service role only. Never logged. |
+| Private-home exact point | The poster's browser only. With public Nominatim it is never sent anywhere; with a keyed provider the chosen query may be sent to that provider and cached as any other query. | The poster. |
+
+The private-home guard runs from `config.publicNominatim`, so even a crafted request with `home=1` and a home address cannot reach public Nominatim. The anonymous limit stores a hash of the IP and a count, never the IP.
+
+## Error Handling (Stage 7 additions)
+
+| Situation | Where | Behavior |
+|---|---|---|
+| `purpose=place`, signed out | `/api/geocode` | Served normally (no 401). Subject to the anonymous limit and the shared throttle. |
+| `purpose=posting`, signed out | `/api/geocode` | 401 `signed_out` (unchanged). |
+| Anonymous limit exceeded | `/api/geocode` | 429 `rate_limited`, no upstream call. "Too many searches from this network. Try again in a few minutes." |
+| Anonymous limit store missing or errors | `/api/geocode` | 503 `unavailable` (fail closed), no upstream call. |
+| No resolvable forwarded IP | `/api/geocode` | A fixed fallback id is used, so the request shares one limited bucket. |
+| Private-home lookup, public Nominatim | `/api/geocode` and picker | 422 `private_home_refused`, no upstream call. The picker shows the explanation and switches to manual placement for that place. |
+| Home page search upstream unavailable | `HomeMap` | Shows "Place search is unavailable right now. Please try again." Manual map panning still works. |
+| Alerts lookup unavailable | alerts route | Existing "Could not find a town…" error; a map point still works. |
+
+## Steering note (Stage 7)
+
+`.kiro/steering/location-rules.md` gains, under Privacy, two sentences: a private home address is never sent to a public map search service (only a keyed, Owner-configured provider may receive it), and an approximate pin does not guarantee anonymity because a flyer image or description can still reveal an address. The "approximate pin" bullet under "Where a posting is pinned" keeps its "150 to 400 m" and "the exact point is never sent to the server" statements and adds that the displaced pin is not an anonymity guarantee. Alerts and Map sections are unchanged.
+
+## Correctness Properties (Stage 7 additions)
+
+These extend the properties above. Numbering continues from Property 25.
+
+### Property 26: Auth depends only on the resolved purpose
+
+For any `purpose` value (`place`, `posting`, an unknown string, or absent) and any signed-in state, `GET /api/geocode` returns HTTP 401 `signed_out` exactly when the resolved purpose is `posting` and no user is signed in. For a resolved purpose of `place` it never returns 401 for being signed out, and an unknown or absent `purpose` resolves to `posting`.
+
+**Validates: Requirements 21.1, 21.2, 21.3**
+
+### Property 27: Every upstream call is throttled, and the cache is shared across callers and purposes
+
+For any query and any purpose, when the query is not cached, `GET /api/geocode` makes exactly one `takeSlot` call before its single upstream `fetch`; when the query is cached (an unexpired stored result for its key), it makes zero `takeSlot` calls and zero upstream `fetch` calls and returns the stored matches, for a signed-in `purpose=posting` caller and an anonymous `purpose=place` caller alike.
+
+**Validates: Requirements 21.6, 21.7, 19.1, 19.2**
+
+### Property 28: A private-home lookup is refused from config alone when the provider is public Nominatim
+
+For any resolved `GeocoderConfig` and any request flagged as a Private_Residence_Lookup, `GET /api/geocode` returns HTTP 422 `private_home_refused` with zero `cacheGet`, zero `takeSlot` and zero upstream `fetch` calls exactly when `config.publicNominatim` is true. When `config.publicNominatim` is false, the same flagged request is not refused on that ground and proceeds to the cache and throttle. The decision uses `config.publicNominatim` only, so no client flag can cause an upstream call to public Nominatim for a private home.
+
+**Validates: Requirements 22.1, 22.4, 22.7, 22.3**
+
+### Property 29: The anonymous client id is an IP HMAC that never contains the IP
+
+For any client IP string and any secret of at least 32 characters, the Anonymous_Client_Id computed as `cacheKey(ip, "anon", secret)` is 64 lowercase hex characters, does not contain the IP as a substring (for IPs that are not themselves hex of that length), is equal for the same IP and secret, and differs for a different IP or a different secret. For a request with no forwarded IP, the id equals the HMAC of the fixed fallback string, so a request with no IP shares one bucket.
+
+**Validates: Requirements 21.8, 21.11**
+
+### Property 30: The anonymous limit and a missing limit store both stop upstream traffic
+
+For any `purpose=place` request, when the Shared_Anonymous_Limit (`takeAnonSlot`) returns `false`, the route returns HTTP 429 `rate_limited` with zero `takeSlot` and zero upstream `fetch` calls; when `takeAnonSlot` throws or is not installed, the route returns HTTP 503 `unavailable` with zero `takeSlot` and zero upstream calls (fail closed); when it returns `true`, the route proceeds to the shared cache and throttle.
+
+**Validates: Requirements 21.9, 21.10, 24.8**
+
+### Property 31: An approximate posting exposes only the approximate pin on every surface
+
+For any draft confirmed with `privateHome` true, the publish payload, the stored row values, and the values a posting-detail or `/api/postings/map` response is built from carry `lat` and `lng` equal to the Approximate_Pin and no other coordinate field, so the JSON of each surface contains neither the exact latitude nor the exact longitude of the confirmed point (extending Property 10 to the response and stored surfaces). For any such draft, a derived label contains no house number of the confirmed place.
+
+**Validates: Requirements 23.1, 23.2, 23.3**
+
+### Property 32: The anonymous slot limit is atomic and resets per window (isolated database)
+
+For any sequence of `cb_geocoder_take_anon_slot` calls for any set of client hashes, run against the local isolated database, including concurrent callers for one hash, the function returns `true` for at most 30 hits within one window per hash, returns `false` for every hit beyond 30 in the window, counts different hashes separately, and returns `true` again once the window has passed. This is a database property: 100 randomized rounds in `supabase/isolated-test`, not a fast-check test.
+
+**Validates: Requirements 24.3, 24.1, 21.9**
+
+### Property 33: The anonymous-limit purge deletes only expired rows (isolated database)
+
+For any set of `cb_geocoder_anon_limit` rows with varied `window_start` values, `cb_geocoder_purge_anon_limit` deletes exactly the rows whose `window_start` is older than the window and leaves every other row, returning the deleted count. This is a database property run in `supabase/isolated-test`.
+
+**Validates: Requirements 24.5**
+
+## Testing Strategy (Stage 7 additions)
+
+PBT applies to the new pure and route logic: the purpose resolver, the anonymous-id HMAC, and the route behavior for auth-by-purpose, throttle/cache sharing, the private-home guard, the anonymous limit and fail-closed. It applies to the stage15 limit and purge functions as randomized database properties in the isolated DB. It does not apply to copy, the attribution link, no-autocomplete, import independence or the SQL privilege grants; those are example tests, guard tests and isolated-DB verify checks.
+
+| Property | File |
+|---|---|
+| 26, 27, 28, 30 | `src/app/api/geocode/route.test.ts` (extend; stubbed `GeocoderStore` incl. `takeAnonSlot`, stubbed `fetch`, generated purpose/sign-in/config/store-state) |
+| 29 | `src/lib/geocodeQuery.cache.test.ts` (extend) or `src/lib/geocodeAnonId.test.ts` |
+| 31 | `src/lib/postingLocation.geo.test.ts` or `src/lib/postingLocation.draft.test.ts` (extend Property 10's surface check) and `src/app/api/postings/route.location.test.ts` (stored-row surface) |
+| 32, 33 | `supabase/isolated-test/location.mjs` (extend) against the stage15 objects |
+
+Example, guard and integration tests (Stage 7):
+
+- Guard test (`src/lib/locationGuards.test.ts`, extend): no `src` file fetches `nominatim.openstreetmap.org` directly except the retired call sites once they are replaced (assert zero occurrences in `HomeMap.tsx` and `alerts/route.ts`); `HomeMap.tsx` imports no server-only geocoder module (`geocoderStore`, `geocodeLookup`, `server-only`); the location modules import nothing from `HomeMap`; the approximate copy strings contain no anonymity-guarantee phrasing (a forbidden set such as `anonymous`, `hidden`, `can't be found`, `cannot be found`, `guarantee`, `untraceable`) and still contain `about a quarter mile (400 m)` and `The street address is not shown`.
+- Console-spy examples: the geocode route never logs the raw IP, the `anonId`, the query, the cache key or the body (Requirements 21.12, 23.5); it logs only `[geocode] <state> <status> <purpose>`.
+- Alerts route example: with a stubbed store, a POST with a town name calls `runGeocodeLookup` and resolves the center from `matches[0].point`; no `nominatim` literal remains.
+- Browser harness (`scripts/location-e2e/`, extend): the home page search sends `GET /api/geocode?purpose=place&q=…` on submit only (no autocomplete), shows the attribution link, and makes no direct Nominatim request (the harness fails on any request to `nominatim.openstreetmap.org`); a signed-out visitor can search the board; a private home under public Nominatim shows the explanation before any lookup and switches to manual placement; the separate flyer-image warning is present; the approximate detail note contains no anonymity-guarantee phrasing.
+- Isolated-DB verify (`stage15_geocoder_anon_limit_verify.sql`): `anon` and `authenticated` are refused on the table and both functions; `service_role` can read and write; RLS on with no policy; the table has only `client_hash, window_start, hits`; a non-hex `client_hash` is rejected; stage 14 objects are unchanged (an inventory/`md5` match); the migration is additive and re-runnable; the limit returns `false` after 30 hits in a window and resets after it; the purge deletes only expired rows. The verify ends with `ALL CHECKS PASS` and rolls itself back.
+
+**Release (Stage 7).** The stage15 SQL (preflight, migration, verify, rollback) is prepared and exercised only in `supabase/isolated-test`. Production SQL and the production deploy stay pending the Owner's review. The protected demo-mode preview is refreshed from the final branch commit at the end, with the Supabase and geocoder variables empty.

@@ -47,6 +47,10 @@
     "5.5 Write the database property tests": {
       "status": "passed",
       "lastRunTimestamp": 1794866324250
+    },
+    "13.12 Property test the approximate-mode surfaces and extend the guard test": {
+      "status": "passed",
+      "lastRunTimestamp": 1794884812605
     }
   },
   "executionHistory": {
@@ -429,6 +433,11 @@
         "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
         "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
         "timestamp": 1794862495920
+      },
+      {
+        "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794877041717
       }
     ],
     "3.1 Switch `validatePostingInput` to the location block and retire the clamp": [
@@ -725,6 +734,11 @@
         "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
         "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
         "timestamp": 1794862501509
+      },
+      {
+        "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794877042966
       }
     ],
     "5.1 Write the stage 14 preflight and migration": [
@@ -834,6 +848,11 @@
         "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
         "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
         "timestamp": 1794862503369
+      },
+      {
+        "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794877043942
       }
     ],
     "7.1 Create the picker map style and the picker action helpers": [
@@ -977,6 +996,11 @@
         "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
         "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
         "timestamp": 1794862505946
+      },
+      {
+        "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794877045435
       }
     ],
     "9.1 Create the browser harness": [
@@ -1052,6 +1076,11 @@
         "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
         "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
         "timestamp": 1794862507216
+      },
+      {
+        "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794877046141
       }
     ],
     "11.1 Run the full checks": [
@@ -1098,6 +1127,11 @@
         "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
         "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
         "timestamp": 1794876671502
+      },
+      {
+        "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794877037134
       }
     ],
     "12. Final checkpoint - Ensure all tests pass, ask the user if questions arise.": [
@@ -1105,6 +1139,11 @@
         "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
         "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
         "timestamp": 1794862508654
+      },
+      {
+        "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794877050012
       }
     ],
     "0. Setup and fixtures": [
@@ -1147,6 +1186,303 @@
         "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
         "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
         "timestamp": 1794872333472
+      }
+    ],
+    "11. Stage 6: Release preparation": [
+      {
+        "executionId": "6d61836e-0639-4d23-85f0-a32d905415ae",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794877037317
+      }
+    ],
+    "13.1 Confirm the branch is current before Stage 7 work": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881179258
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881186541
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881192365
+      }
+    ],
+    "13.2 Add the purpose resolver and the anonymous-id helper": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881179366
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881196266
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882272379
+      }
+    ],
+    "13.4 Extend the geocoder store with the anonymous limit": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881179456
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882277036
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882640118
+      }
+    ],
+    "13.5 Extract the shared lookup core": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881179700
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882645928
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882995119
+      }
+    ],
+    "13.6 Update the geocode route for purpose, anonymous limit and the private-home guard": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881179895
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794883004399
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794883316963
+      }
+    ],
+    "13.8 Route the home-page search through the shared service": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881180085
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794883338798
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884211475
+      }
+    ],
+    "13.9 Route the alerts town lookup through the shared service": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881180209
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794883337567
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884212471
+      }
+    ],
+    "13.10 Private-home behavior and approximate-mode copy in the picker": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881180343
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794883342262
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884214294
+      }
+    ],
+    "13.11 Update the detail-page approximate note copy": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881180475
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794883005689
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794883319265
+      }
+    ],
+    "13.13 Write the stage15 SQL (preflight, migration, verify, rollback)": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881180608
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881197324
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882271203
+      }
+    ],
+    "13.14 Extend the isolated-database harness for stage15": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881180918
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882279782
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882641019
+      }
+    ],
+    "13.16 Run the local database and unit tests and record the results": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881181057
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884844270
+      },
+      {
+        "executionId": "85d8240f-18a9-45b9-beb4-d1905f5d05cf",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794892645541
+      }
+    ],
+    "13.17 Correct the release checklist against the SQL": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881181186
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884225849
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884838422
+      }
+    ],
+    "13.18 Verify the branch includes origin/main and prior release fixes, and refresh the protected preview": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881181313
+      }
+    ],
+    "14. Checkpoint - Stage 7": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881181437
+      }
+    ],
+    "15. Final checkpoint - Stage 7": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794881181574
+      }
+    ],
+    "13.3 Write property tests for the purpose resolver and the anonymous id": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882278314
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882639060
+      }
+    ],
+    "13.15 Write the stage15 database property tests": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882647218
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794882994436
+      }
+    ],
+    "13.7 Write route tests for purpose, throttle/cache sharing, the private-home guard and the anonymous limit": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794883340318
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884215090
+      }
+    ],
+    "13.12 Property test the approximate-mode surfaces and extend the guard test": [
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884224488
+      },
+      {
+        "executionId": "22afaec7-5eaa-41b7-9b55-b58a77bacbd0",
+        "chatSessionId": "sess_35c21adf-77ba-42e8-b171-a9c516273ef0",
+        "timestamp": 1794884839345
       }
     ]
   }

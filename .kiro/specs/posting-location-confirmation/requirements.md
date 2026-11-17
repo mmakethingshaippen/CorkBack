@@ -10,7 +10,7 @@ The feature replaces the locked rule in `.kiro/steering/location-rules.md` ("pin
 
 Address lookup uses the public OpenStreetMap Nominatim service by default. Its usage policy allows at most 1 request per second for the whole application, not per server instance, and requires caching, attribution and an identifying User-Agent. The lookup therefore runs only when the poster taps a button, sends only the selected or typed address text, shares one throttle and one cache across all server instances through Supabase, and switches itself off, leaving manual pin placement, when any policy condition cannot be met.
 
-Scope: scan, review, edit and detail pages, one new geocoder route with its shared throttle and cache, a new scan-extraction field, pure location modules, a new location picker, and one draft SQL stage (`stage14`). Out of scope: the home page's town search and "Use my location" behavior (which still call Nominatim directly and are not covered by the shared throttle, see the design), alerts, messaging, moderation and publishing the flyer image.
+Scope: scan, review, edit and detail pages, one new geocoder route with its shared throttle and cache, a new scan-extraction field, pure location modules, a new location picker, and one draft SQL stage (`stage14`). A follow-up stage (Requirements 21 to 24, built as tasks Stage 7) routes the home page's town search and the alerts town lookup through the same geocoder route so every lookup shares one throttle and one cache, adds a `purpose` parameter with an anonymous place-search path and a shared additive anonymous rate limit (a second draft SQL stage, `stage15`), keeps a private-home address off public Nominatim, and audits approximate-mode privacy on every surface. Out of scope: the home page's "Use my location" behavior, messaging, moderation and publishing the flyer image.
 
 ## Glossary
 
@@ -47,6 +47,14 @@ Scope: scan, review, edit and detail pages, one new geocoder route with its shar
 - **Location_SQL**: The drafted `stage14_posting_location*.sql` files (preflight, migration, verify and rollback). They add the posting precision column, the location update function, and the geocoder throttle and cache objects.
 - **Preview_Build**: The local production build and the protected Vercel preview, both in demo mode with no database connection.
 - **Owner**: The project owner, who reviews and applies SQL and approves the production deployment.
+- **Home_Board**: The home page map and its controls (`HomeMap`), including the town/city search and the Browsing_Location. It stays a client component.
+- **Purpose**: The `purpose` query parameter of the Geocoder_Service: `place` (public-place search for the board and alerts, anonymous allowed) or `posting` (the signed-in posting picker).
+- **Public_Place_Query**: A Geocoder_Query for a city, town, area, venue or other public place. This is the only kind the Public_Nominatim endpoint may receive.
+- **Private_Residence_Lookup**: A Geocoder_Query flagged as the address of a private home. It is never sent to Public_Nominatim; a keyed non-public provider may receive it.
+- **Anonymous_Client_Id**: The hex HMAC-SHA256 of the client IP read from a trusted forwarded header, computed with `GEOCODER_CACHE_SECRET`. The raw IP is never stored or logged.
+- **Anonymous_Rate_Limit**: At most 30 `purpose=place` lookups per 10 minutes per Anonymous_Client_Id, additive to the Shared_Throttle.
+- **Shared_Anonymous_Limit**: The Supabase-backed store (`cb_geocoder_take_anon_slot` and its table) that enforces the Anonymous_Rate_Limit across all server instances. Added by the stage15 SQL.
+- **Stage15_SQL**: The drafted `stage15_geocoder_anon_limit*.sql` files (preflight, migration, verify and rollback). Additive to stage 14.
 
 ## Requirements
 
@@ -352,7 +360,7 @@ Scope: scan, review, edit and detail pages, one new geocoder route with its shar
 7. IF any of the following is true, THEN THE Geocoder_Service SHALL enter the Search_Unavailable_State and make no upstream request: `GEOCODER_USER_AGENT` is missing or invalid; `GEOCODER_CACHE_SECRET` is missing or shorter than 32 characters; `GEOCODER_URL` is not an https URL; `NEXT_PUBLIC_SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` is missing; the Shared_Throttle call fails or is not installed; the Geocoder_Cache read fails.
 8. IF the Geocoder_Cache write fails after a successful upstream response, THEN THE Geocoder_Service SHALL still return the results and SHALL log only the error code.
 9. WHILE the Geocoder_Service is in the Search_Unavailable_State, THE Location_Picker SHALL keep manual pin placement, "Use my location" and publishing working, and THE Geocoder_Service SHALL return HTTP 503 with the state `unavailable`.
-10. THE Geocoder_Service SHALL leave the home page's town search and the alerts town lookup unchanged, and THE design SHALL record that these two direct Nominatim calls are outside the shared throttle.
+10. THE Geocoder_Service SHALL, until Requirement 21 is built, leave the home page's town search and the alerts town lookup unchanged, and THE design SHALL record that these two direct Nominatim calls are outside the shared throttle; Requirement 21 routes both through the shared Geocoder_Service so that this residual risk is closed.
 
 ### Requirement 20: Shared throttle and cache in Supabase
 
@@ -369,3 +377,75 @@ Scope: scan, review, edit and detail pages, one new geocoder route with its shar
 7. THE throttle and cache objects SHALL have row level security enabled with no policies, SHALL grant all privileges and execute rights to `service_role` only, and SHALL revoke every privilege from `PUBLIC`, `anon` and `authenticated`.
 8. THE Geocoder_Service SHALL reach the Shared_Throttle and the Geocoder_Cache only with the server-side service role key, and SHALL never expose that key to the browser.
 
+
+### Requirement 21: One geocoder service for every lookup, with a shared anonymous limit
+
+**User Story:** As the Owner, I want the home-page place search and the alerts town lookup to go through the same `/api/geocode` service as the posting picker, so that every geocoding request shares one application-wide throttle and one shared cache, even for visitors who are not signed in.
+
+The earlier design kept two direct Nominatim calls (`HomeMap.searchTown` in the browser and `geocodeTown` in `src/app/api/alerts/route.ts`) outside the Shared_Throttle (Requirement 19.10). This requirement closes that gap by routing both through `/api/geocode`. Because browsing CorkBack never requires an account (see `account-model.md`), the place search must keep working for a signed-out visitor, so the service needs a purpose parameter and an anonymous rate limit that does not depend on a user id. The per-server in-memory user cap (Requirement 4.14) cannot bound anonymous traffic across Vercel instances and has no user id to key on, so the anonymous limit is a shared, additive limit keyed by a privacy-preserving client identifier. The raw client IP is never stored or logged.
+
+#### Acceptance Criteria
+
+1. THE Geocoder_Service SHALL accept a `purpose` query parameter with the values `place` and `posting`, and IF `purpose` is any other value or absent, THEN THE Geocoder_Service SHALL treat the request as `purpose=posting`.
+2. WHERE `purpose` is `place`, THE Geocoder_Service SHALL serve a signed-out viewer without returning HTTP 401, and SHALL look up only public-place queries (a city, town, area or other public place) as Requirement 22 defines.
+3. WHERE `purpose` is `posting`, THE Geocoder_Service SHALL require a signed-in viewer and SHALL return HTTP 401 with the state `signed_out` for a signed-out viewer, as Requirement 4.8 requires today.
+4. WHEN `HomeMap` searches for a town or city, THE Home_Board SHALL call `fetch("/api/geocode?purpose=place&q=…")` over the network and SHALL make no direct request to `nominatim.openstreetmap.org`.
+5. WHEN the alerts route resolves a town name to a center, THE alerts route SHALL call the shared Geocoder_Service path with `purpose=place` and SHALL make no direct request to `nominatim.openstreetmap.org`.
+6. THE Geocoder_Service SHALL apply the Shared_Throttle (Requirement 20) to every upstream request, whatever the `purpose` and whether or not the viewer is signed in, so that the application-wide limit of at most 1 upstream request per second (Requirement 19.1) holds across all callers.
+7. THE Geocoder_Service SHALL share one Geocoder_Cache (Requirement 20) across every caller, so that a cached result for a query is reused for signed-in and signed-out callers alike.
+8. THE Geocoder_Service SHALL derive an Anonymous_Client_Id as the hex HMAC-SHA256 of the client IP read from a trusted forwarded header, computed with the same server secret approach as the Geocoder_Cache key (`GEOCODER_CACHE_SECRET`), and SHALL never store or log the raw client IP.
+9. THE Geocoder_Service SHALL enforce an additive Anonymous_Rate_Limit through the Shared_Anonymous_Limit (Requirement 24) of at most 30 `purpose=place` lookups per 10 minutes per Anonymous_Client_Id, in addition to the Shared_Throttle of Requirement 19.1.
+10. IF a `purpose=place` request exceeds the Anonymous_Rate_Limit, THEN THE Geocoder_Service SHALL return HTTP 429 with the state `rate_limited`, SHALL make no upstream request, and SHALL show the caller "Too many searches from this network. Try again in a few minutes."
+11. WHERE a `purpose=place` request arrives with no resolvable forwarded client IP, THE Geocoder_Service SHALL key the Anonymous_Rate_Limit by a fixed fallback identifier, so that a request with no IP still shares one limited bucket and never bypasses the limit.
+12. THE Geocoder_Service SHALL log only the state, the HTTP status and the `purpose`, and SHALL never log the raw client IP, the Anonymous_Client_Id, the query, the cache key or the response body.
+13. THE Home_Board place search and the alerts town lookup SHALL keep sending only the typed place text as the Geocoder_Query (Requirement 18), SHALL offer no autocomplete (Requirement 19.5), and SHALL show the attribution "© OpenStreetMap contributors" as a link to `https://www.openstreetmap.org/copyright` where results are shown.
+14. THE posting flow SHALL remain independent of the Home_Board browsing-location code (Requirement 7.9): the only shared path SHALL be the network call to `/api/geocode`, and `HomeMap` SHALL stay a client component that imports no server-only geocoder module.
+
+### Requirement 22: A private-home lookup never reaches public Nominatim
+
+**User Story:** As a poster at a private home, I want CorkBack to never send a private-residence address to a public map search service, so that my home address is not handed to a third party just because I scanned a flyer at home.
+
+Rationale: blocking phone numbers and email addresses from a query (Requirement 18.4) does not make an address public. A street address of a private home is personal data whether or not it carries a phone number or email address. A public-place query (a city, town, area, venue or other public place) is the only kind the public Nominatim endpoint may receive. Only a keyed, non-public provider that the Owner has configured may receive a private-residence lookup.
+
+#### Acceptance Criteria
+
+1. WHERE the configured provider is Public_Nominatim, THE Geocoder_Service SHALL look up only public-place queries and SHALL treat a request flagged as a private-residence lookup as not permitted.
+2. WHERE the poster has checked "This place is a private home" and the configured provider is Public_Nominatim, THE Location_Picker SHALL offer manual pin placement only for that place and SHALL make no lookup request for it.
+3. WHERE the poster has checked "This place is a private home" and a keyed provider is configured (`GEOCODER_API_KEY` set and `GEOCODER_URL` names a host other than the Public_Nominatim host), THE Location_Picker MAY send the private-residence lookup to the Geocoder_Service.
+4. IF the Geocoder_Service receives a request flagged as a private-residence lookup while the configured provider is Public_Nominatim, THEN THE Geocoder_Service SHALL return HTTP 422 with the state `private_home_refused`, SHALL make no upstream request, and SHALL make no Shared_Throttle or cache call.
+5. BEFORE the Location_Picker sends or withholds a private-residence lookup, THE Location_Picker SHALL show the poster the explanation "A private home address is not sent to a public map search service. Place the pin on the map, or use Use my location if you are there." when the configured provider is Public_Nominatim.
+6. THE Location_Picker SHALL show the explanation of Requirement 22.5 before any query for that place leaves the browser, so that the poster learns what will happen before, not after, a lookup.
+7. THE Geocoder_Service SHALL decide whether a private-residence lookup is permitted from the resolved Geocoder_Config (`publicNominatim` and `apiKey`) and SHALL never rely on the client alone to withhold such a lookup.
+
+### Requirement 23: Approximate mode never exposes the exact point on any surface
+
+**User Story:** As a poster who publishes an approximate pin for a private home, I want the exact point and house number to be absent from every public surface, so that no API response, stored text, log or cached result reveals where I actually live.
+
+Scope note: the warnings here never claim that a randomly displaced pin guarantees anonymity. A visitor can still infer a location from a publicly displayed flyer image or a description, and the copy must say so without promising anonymity.
+
+#### Acceptance Criteria
+
+1. WHERE a posting has Precision `approximate`, THE POST `/api/postings` response, every PATCH posting response, the GET posting detail response and the `/api/postings/map` response SHALL carry only the Approximate_Pin as `lat` and `lng`, and SHALL carry no exact point and no house number for that posting.
+2. WHERE a posting has Precision `approximate`, THE stored `place_label` and every other stored text for that posting SHALL carry no house number of the confirmed place, through the "Near {area}" label rule (Requirement 9.7) and the Personal_Details_Warning (Requirement 11.3).
+3. WHEN the poster publishes with Precision `approximate`, THE exact confirmed point SHALL never leave the browser, and only the Approximate_Pin SHALL be sent to the server and stored, as Requirement 9.5 requires.
+4. THE Geocoder_Cache SHALL carry no exact point of a private home beyond the result of a query the poster chose to run, and WHERE the provider is Public_Nominatim no private-residence query SHALL be run at all (Requirement 22), so no private-home exact point is cached.
+5. THE application logs SHALL carry no exact point, no house number and no Approximate_Pin that can be tied to a poster's private home, consistent with the logging limits of Requirements 4.11, 21.12 and 19.8.
+6. THE Location_Picker private-home explanation and the posting detail approximate-location note SHALL describe that visitors see an approximate area and SHALL NOT claim that the displaced pin guarantees anonymity or hides the poster.
+7. THE Location_Picker SHALL show a warning, separate from the pin and the approximate-location note, that a publicly displayed flyer image or description can still reveal an address, with the text "A flyer image or words in your posting can still show an address. The approximate pin does not hide what the image or text says."
+8. THE existing private-home copy (Requirement 9.3) and the detail-page approximate note (Requirement 9.10) SHALL be audited and, where any wording implies the pin guarantees anonymity, SHALL be reworded to avoid an anonymity guarantee while keeping the "about a quarter mile (400 m)" and "The street address is not shown" statements.
+
+### Requirement 24: Shared additive anonymous rate limit in Supabase
+
+**User Story:** As the Owner, I want the anonymous place-search limit shared across all server instances and keyed without a raw IP, so that a flood of signed-out searches cannot bypass the per-user cap or the 1 request per second policy, and no raw IP is ever stored.
+
+#### Acceptance Criteria
+
+1. THE Location_SQL SHALL provide, in a new migration file `stage15`, a Supabase-backed Shared_Anonymous_Limit that counts `purpose=place` lookups per Anonymous_Client_Id within a fixed window, additive to the existing stage 14 objects.
+2. THE stage15 migration SHALL be additive only, SHALL change no stage 14 object, and SHALL consist of a preflight, a migration, a verify and a rollback file in the pattern of `supabase/stage14_posting_location*.sql`.
+3. THE Shared_Anonymous_Limit SHALL be a function `cb_geocoder_take_anon_slot` that, in one atomic statement, records a hit for an Anonymous_Client_Id and returns whether the caller is within the limit of at most 30 hits per 10 minutes.
+4. THE Shared_Anonymous_Limit store SHALL key each row by the Anonymous_Client_Id (a 64-character hex HMAC) and SHALL carry no raw IP, no user id, no email address and no other identifying value.
+5. THE Shared_Anonymous_Limit SHALL expire or prune rows older than the window, through a purge function or a bounded count query, so that the table does not grow without limit.
+6. THE stage15 objects SHALL have row level security enabled with no policies, SHALL grant all privileges and execute rights to `service_role` only, and SHALL revoke every privilege from `PUBLIC`, `anon` and `authenticated`.
+7. THE Geocoder_Service SHALL reach the Shared_Anonymous_Limit only with the server-side service role key, and SHALL never expose that key or the Anonymous_Client_Id to the browser.
+8. IF the Shared_Anonymous_Limit call fails or the stage15 function is not installed, THEN THE Geocoder_Service SHALL fail closed for `purpose=place`, SHALL return HTTP 503 with the state `unavailable`, and SHALL make no upstream request, so that a missing shared limit never turns into unlimited anonymous traffic.
+9. THE stage15 SQL SHALL be applied and tested only in the local isolated database under `supabase/isolated-test`, and SHALL stay pending the Owner's review for production, as Requirement 16.3 requires for stage 14.
