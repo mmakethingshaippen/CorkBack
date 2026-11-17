@@ -901,3 +901,23 @@ Routed both the home-page city search and the alerts town lookup through the sha
 - **SQL stage 15 (`supabase/stage15_geocoder_anon_limit*.sql`, additive, not applied):** table `cb_geocoder_anon_limit` (client_hash 64-hex, window_start, hits; no raw IP/user), `cb_geocoder_take_anon_slot(text,integer,integer)` (30 hits / 600 s default), `cb_geocoder_purge_anon_limit(integer)`. RLS on with no policies; service_role only. Stage 14 is not reopened.
 - **Focused checks (run once):** typecheck clean; lint clean; vitest on the 8 changed/new Stage 7 test files 110 passed; isolated DB `location.mjs` (stage 14 + stage 15) 89 passed, 0 failed, including the stage 15 concurrency (Property 32) and purge (Property 33) tests and verify `ALL CHECKS PASS`. The unchanged earlier suites (stages 0-6 vitest, board harness, other isolated suites) were green at task 11.1 and were not re-run.
 - **Deferred/optional:** the stage 7 property-test tasks marked optional were implemented; no optional improvement beyond the five requested items was added.
+
+## Geocoder configuration enabled on production (2026-11-16)
+
+Set the two geocoder environment variables in Vercel Production and redeployed. No migrations were re-run and no paid provider was added.
+
+- **GEOCODER_USER_AGENT** = `CorkBack/0.1.0 (https://corkback.vercel.app)` - the package name and version with CorkBack's own verified production origin as the contact (an https URL, accepted by the policy and by isValidUserAgent). No new contact was invented.
+- **GEOCODER_CACHE_SECRET** - a cryptographically random 48-byte base64url value (64 characters), generated with Node crypto.randomBytes and piped straight into `vercel env add` so the value was never printed or logged. Both variables are Production-scoped and encrypted.
+- **Redeploy:** production redeployed so the variables take effect; the geocode route now resolves instead of returning 503.
+
+**Focused verification (production, https://corkback.vercel.app):**
+- Anonymous city search `GET /api/geocode?purpose=place&q=Berkeley` (signed out) -> 200 with real matches; the same query again -> 200 (shared cache).
+- Anonymous `q=Richmond, California` -> 200.
+- Signed-in-only `purpose=posting` while signed out -> 401 (the posting picker still requires sign-in; the authenticated 200 path is the same route code covered by the Stage 7 cookie-session browser harness).
+- Alert-town resolution through the shared lookup core (`q=Oakland, California`) -> 200 center 37.8044557, -122.271356; this is the exact core the alerts route uses.
+- Shared cache populated: `cb_geocoder_cache` held 3 rows after these searches; the per-IP limiter `cb_geocoder_anon_limit` recorded the anonymous requests. Both are shared across every caller.
+- Private-home guard: `purpose=place&home=1&q=123 Main Street Berkeley` -> 422 `private_home_refused` ("A private home address is not sent to a public map search service."), no upstream call. Manual pin placement in the picker is unaffected (public Nominatim is the only provider; no keyed provider was added, so private homes stay manual-only by design).
+- Too-short query -> 400.
+- Test data: two short-lived accounts (`delivered+cbgeo_*@resend.dev`) were created for the signed-in/alert checks and deleted; 0 test users remain.
+
+**Final production deployment:** redeploy of commit `f5a0660`; production alias https://corkback.vercel.app serves it with the geocoder enabled. Stage 14 and stage 15 remain applied; no migration was re-run.
