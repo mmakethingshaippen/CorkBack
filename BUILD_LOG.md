@@ -870,3 +870,23 @@ Gaps closed in `src/components/map/LocationPicker.tsx` (task 9.2 findings):
 - Isolated DB suite `supabase/isolated-test/location.mjs` (`CB_ISO_DIR=%TEMP%\cb-iso`): 46 passed, 0 failed.
 - `git diff --name-only main...HEAD` (committed branch diff) contains neither `next-env.d.ts` nor `supabase/.temp/`. Both are only uncommitted working-tree changes.
 - Scratch build copies and junctions removed. Nothing committed or pushed. No production Supabase or real Nominatim contacted.
+
+
+## Posting location confirmation: preview preparation
+
+Branch `feature/posting-location-confirmation` (from `40ac4ad`). Main untouched, nothing promoted or aliased to production.
+
+Commits:
+- 472fc81 feat(db): stage 14 posting location SQL (draft, not applied) with local isolated tests
+- 1581fb5 feat(location): confirmed posting location, address candidates, geocoder route, picker UI
+- b8904fd docs(location): spec, steering, e2e harness, setup and build log for posting location confirmation
+
+Diff review: 88 files vs `40ac4ad`. Only fake test values; fixtures and `__testing__` modules imported only by tests; no change to the home browsing-location code. Excluded from every commit: `next-env.d.ts`, `supabase/.temp/`.
+
+Preview deployment (first push): dpl_43ootZM7T9PL6Jjiwj5gq38eGsSL, https://cork-back-a1sx6iy9b-max-082a.vercel.app, Ready. Branch alias: https://cork-back-git-feature-posting-location-confirmation-max-082a.vercel.app. Deployment Protection: on. An unauthenticated request returns 302 to the Vercel login (vercel.com/sso-api), not the app.
+
+Demo mode: `vercel env ls` shows every Supabase, Resend, cron, Gemini and app-URL variable scoped to Production only. The Preview has none, so it runs in demo mode and never connects to production project djdmiqxzcgjdwcxqqrzk.
+
+SQL needed for production (pending Owner review, not applied anywhere): `supabase/stage14_posting_location_preflight.sql`, then `stage14_posting_location.sql`, then `stage14_posting_location_verify.sql`; rollback is `stage14_posting_location_rollback.sql`.
+
+Env vars needed for place search (none set): `GEOCODER_URL` (https), `GEOCODER_USER_AGENT` (with a contact), `GEOCODER_REFERER`, `GEOCODER_CACHE_SECRET` (32+ characters), optional `GEOCODER_API_KEY` and `GEOCODER_API_KEY_PARAM`, plus the existing Supabase URL and service role key. Without them search is disabled and manual pin placement still works.
