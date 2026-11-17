@@ -12,9 +12,9 @@ Target length: **under 3:00**. One continuous screen recording with voiceover. N
 2. **Scan flow end to end (0:25–1:15)** — the required highlight
    - Sign in (email). Tap **Scan a flyer** (dark-red main action).
    - Capture/choose the test flyer. Show the server extraction returning structured fields.
-   - Review screen: title, date, time, place, category, optional RSVP, expiry preset, "use my current location" pin block. Edit one field to show it is editable.
+   - Review screen: title, date, time, place, category, optional RSVP, expiry preset, "Is this where it takes place?" pin confirmation block (address candidates, search, map). Edit one field to show it is editable.
    - Tap **Publish to the map**. Land on the new posting page; show the new pin on the map.
-   - VO: "A photo of a flyer becomes a structured posting. You review every field before anything goes public, and it pins where you are."
+   - VO: "A photo of a flyer becomes a structured posting. You review every field before anything goes public, and it pins where the event takes place, once you confirm the spot."
 
 3. **Alerts (1:15–1:45)**
    - Go to **Set an alert**. Create one: a category, a home point (town), a radius (or whole town).

@@ -37,7 +37,7 @@ npm run dev     # http://localhost:3000
 
 ```
 npm run typecheck   # types
-npm test            # property-based tests (username, expiry, pin nudge, card tilt)
+npm test            # property-based tests (username, expiry, pin location, card tilt)
 npm run build       # production build + lint
 ```
 

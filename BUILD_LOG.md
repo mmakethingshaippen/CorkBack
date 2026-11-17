@@ -823,3 +823,50 @@ No server left running. Scratch builds `%TEMP%\cb_fin_seed` and `%TEMP%\cb_fin_m
 - **Not run on production in this release:** publishing one listing per category, Community with and without a date, and editing a legacy-dated listing. These were covered by the local Edge suites (stage 2 and stage 4).
 - **Deferred:** stage 12 (geo index) and stage 13 (takedown parity) not applied.
 - **Still needs a real phone:** background-tab pause and resume of an open thread; "Use my location" distances and the radius ring; automatic location when permission is already granted, and no prompt in a fresh browser; touch use of the category panel, the radius control and world-map panning.
+
+
+## Task 5.6: local database tests for posting location confirmation
+
+Local only (embedded PostgreSQL 17 + PostgREST 14.18, `CB_ISO_DIR=%TEMP%\cb-iso`). Nothing was applied to production (djdmiqxzcgjdwcxqqrzk). Each suite ran alone, one after another.
+
+Command form: `$env:CB_ISO_DIR = "$env:TEMP\cb-iso"; node supabase\isolated-test\<suite>.mjs`
+
+| Suite | Result |
+|---|---|
+| location.mjs | 46 passed, 0 failed (includes P21 and P25 database properties) |
+| run.mjs | 52/52 passed |
+| messagereads.mjs | 67 passed, 0 failed |
+| twoaccount.mjs | 30 passed, 0 failed |
+| avatars.mjs | 70 passed, 0 failed |
+| geoindex.mjs | 54 passed, 0 failed |
+| takedown.mjs (no draft) | 458 mismatches, exit 1. Known and pre-existing; they need CB_TAKEDOWN_DRAFT=stage13_takedown_app_parity.sql. Not fixed here. |
+
+Note: the first run.mjs attempt failed in the harness (`initdb: directory ...\cb-iso\data exists but is not empty`), a stale scratch data folder with no postgres process running. I deleted `%TEMP%\cb-iso\data` and re-ran; it passed 52/52. No regressions from stage 14.
+## Posting location confirmation: browser harness results (task 9.4)
+
+Harness: `scripts/location-e2e/` (Playwright core 1.49.1, installed Microsoft Edge, headless). Run from a scratch copy of the repo without `.env.local`, built against a mock Supabase (`http://127.0.0.1:3299`), empty `GEOCODER_*` so `/api/geocode` stays disabled. The built chunks held no reference to the production project. No production Supabase and no real Nominatim were contacted (`checkNothingExternal` passed in every scenario). Scratch copy and node_modules junction removed afterwards.
+
+| Script | Checks | Passed | Failed |
+|---|---|---|---|
+| `smoke.mjs` | 28 | 28 | 0 |
+| `scenarios.mjs` | 300 | 300 | 0 |
+| `pages.mjs` | 121 | 121 | 0 |
+
+Viewports: mobile 390x844 and desktop 1280x800 (both in every script).
+
+Checks before the run: `npm run typecheck` and `npm run lint` clean; `npm test` 86 files, 743 tests passed.
+
+Gaps closed in `src/components/map/LocationPicker.tsx` (task 9.2 findings):
+- Req 3.7: note This
+
+## Posting location confirmation: task 11.1 full checks
+
+- Picker texts aligned with requirements.md: 7.1 hint ("Optional. Only use this if you are at the place now."), 9.1 checkbox label ("This place is a private home", in the picker and the read-only edit form), 9.3 explanation (quarter mile, 400 m, street address not shown). Unused APPROX_MIN_METERS import removed. `scripts/location-e2e/pages.mjs` updated for the new label and explanation. No unit test asserted the old strings.
+- `npm run typecheck`: clean. `npm run lint`: no warnings or errors.
+- `npm test` (full vitest, no Supabase env vars set): 86 files, 743 tests, all pass.
+- `npm run build` in scratch copies without `.env.local`: succeeded, `.next\BUILD_ID` present (mock-Supabase build for the location harness, seed-mode build for the board harness).
+- Browser harness `scripts/location-e2e` (Edge, fresh result JSON): smoke 28/28, scenarios 300/300, pages 121/121. The first pages run failed one check on the old explanation text; the assertion was updated and all checks then passed.
+- Board regression (seed-mode build): stage1 57/57, stage2 154 PASS lines and 0 FAIL (same count as the earlier fix6 log; the previous note says 150), stage4 156/156.
+- Isolated DB suite `supabase/isolated-test/location.mjs` (`CB_ISO_DIR=%TEMP%\cb-iso`): 46 passed, 0 failed.
+- `git diff --name-only main...HEAD` (committed branch diff) contains neither `next-env.d.ts` nor `supabase/.temp/`. Both are only uncommitted working-tree changes.
+- Scratch build copies and junctions removed. Nothing committed or pushed. No production Supabase or real Nominatim contacted.
