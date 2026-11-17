@@ -136,4 +136,13 @@ seeds three synthetic postings, then runs the stage 14 preflight, the migration 
 checks (the author JWT updates its posting, another user's JWT gets `CB404`, an invalid precision gets `22023`, and `anon` and
 `authenticated` are refused on the geocoder tables and functions), the rollback (every stage 14 object gone, the stage 8 insert
 grants back exactly, run twice), and the migration again. It prints `PASS` and `FAIL` lines and exits non-zero on any failure.
-Smoke run: 40 passed, 0 failed. The database property tests (task 5.5) extend this file.
+
+After the stage 14 chain, the same script (task 13.14) runs the additive **stage 15** anonymous-limit chain
+(`stage15_geocoder_anon_limit*.sql`) with stage 14 left installed: the preflight (stage 14 present, every stage 15 object
+absent, and it captures the stage 14 inventory md5), the migration (twice, re-runnable), `verify` (requires the
+`ALL CHECKS PASS` row and checks that its transaction rolled back and left no anon-limit row), that the stage 14 inventory
+md5 is unchanged before and after, PostgREST role checks (`anon` and `authenticated` refused on `cb_geocoder_anon_limit`
+and both anon functions, `service_role` allowed to take a slot and purge), the rollback (every stage 15 object gone, stage 14
+unchanged, run twice), and the migration again. The posting rows are unchanged throughout (stage 15 is additive).
+Smoke run: 81 passed, 0 failed (the stage 14 chain, the stage 15 chain, and the database property tests). The database
+property tests (tasks 5.5 and 13.15) extend this file.

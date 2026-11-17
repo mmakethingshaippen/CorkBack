@@ -26,6 +26,8 @@ const store = {
   cacheGet: vi.fn<(key: string) => Promise<unknown[] | null>>(),
   cachePut: vi.fn<(key: string, m: unknown[]) => Promise<{ ok: boolean; code?: string }>>(),
   purgeExpired: vi.fn(),
+  takeAnonSlot: vi.fn<(clientHash: string) => Promise<boolean>>(),
+  purgeAnonExpired: vi.fn(),
 };
 const createStoreSpy = vi.fn();
 
@@ -42,6 +44,7 @@ vi.mock("@/lib/geocoderStore", async () => {
 
 import { GET } from "./route";
 import { cacheKey } from "@/lib/geocodeQuery";
+import { anonymousClientId } from "@/lib/geocodePurpose";
 
 const UA = "CorkBack/1.0 (contact: ops@example.com)";
 const SECRET = "s3cret-value-for-the-cache-key-0123456789abcdef";
@@ -102,6 +105,21 @@ function setEnv(over: Record<string, string | undefined> = {}) {
 const call = (q: string | null = QUERY) =>
   GET(new Request(`http://localhost/api/geocode${q === null ? "" : `?q=${encodeURIComponent(q)}`}`));
 
+/**
+ * Flexible caller for the Stage 7 purpose/home/anonymous-IP cases. Builds the URL
+ * from q, purpose and home, and sets a forwarded client IP header when given.
+ */
+function callWith(opts: { q?: string; purpose?: string | null; home?: boolean; ip?: string } = {}) {
+  const { q = QUERY, purpose, home, ip } = opts;
+  const url = new URL("http://localhost/api/geocode");
+  url.searchParams.set("q", q);
+  if (purpose != null) url.searchParams.set("purpose", purpose);
+  if (home) url.searchParams.set("home", "1");
+  const headers: Record<string, string> = {};
+  if (ip) headers["x-forwarded-for"] = ip;
+  return GET(new Request(url.toString(), { headers }));
+}
+
 function upstreamOk(rows: unknown = NOMINATIM_ROWS) {
   fetchMock.mockResolvedValue({ status: 200, json: async () => rows });
 }
@@ -118,6 +136,8 @@ beforeEach(() => {
   store.takeSlot.mockReset().mockResolvedValue(0);
   store.cacheGet.mockReset().mockResolvedValue(null);
   store.cachePut.mockReset().mockResolvedValue({ ok: true });
+  store.takeAnonSlot.mockReset().mockResolvedValue(true);
+  store.purgeAnonExpired.mockReset().mockResolvedValue(0);
   createStoreSpy.mockReset();
   fetchMock.mockReset();
   upstreamOk();
@@ -388,5 +408,229 @@ describe("GET /api/geocode", () => {
     ]) {
       expect(logs).not.toContain(secret);
     }
+  });
+});
+
+/**
+ * Stage 7: the shared-service wrapper. Covers the purpose parameter, the anonymous
+ * place-search path, the shared throttle/cache across purposes, the private-home
+ * guard decided from config alone, and the fail-closed anonymous limit.
+ *
+ * Covers design Properties 26, 27, 28, 30 (route parts).
+ * **Validates: Requirements 21.2, 21.3, 21.6, 21.7, 21.9, 21.10, 21.12, 22.1, 22.3, 22.4, 22.7, 24.8**
+ */
+describe("GET /api/geocode — purpose, sharing, private-home guard and the anonymous limit", () => {
+  // Property 26 (route part): auth depends only on the resolved purpose.
+  describe("purpose and auth", () => {
+    it("serves purpose=place signed OUT with 200 ok and no 401", async () => {
+      user = null;
+      const res = await callWith({ purpose: "place", ip: "203.0.113.7" });
+      expect(res.status).toBe(200);
+      expect((await res.json()).state).toBe("ok");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("answers 401 signed_out for purpose=posting signed out, with no store or upstream call", async () => {
+      user = null;
+      const res = await callWith({ purpose: "posting" });
+      expect(res.status).toBe(401);
+      expect((await res.json()).state).toBe("signed_out");
+      expect(createStoreSpy).not.toHaveBeenCalled();
+      expect(store.takeAnonSlot).not.toHaveBeenCalled();
+      expect(store.takeSlot).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([["unknown", "banana"], ["absent", null]])(
+      "treats an %s purpose as posting: 401 signed_out when signed out",
+      async (_n, purpose) => {
+        user = null;
+        const res = await callWith({ purpose });
+        expect(res.status).toBe(401);
+        expect((await res.json()).state).toBe("signed_out");
+        expect(fetchMock).not.toHaveBeenCalled();
+      },
+    );
+
+    it("serves purpose=place signed IN as well (no 401 either way)", async () => {
+      const res = await callWith({ purpose: "place", ip: "203.0.113.7" });
+      expect(res.status).toBe(200);
+      expect((await res.json()).state).toBe("ok");
+    });
+  });
+
+  // Property 27 (route part): every upstream call is throttled; the cache is shared
+  // across callers and purposes.
+  describe("shared throttle and cache", () => {
+    it("takes exactly one slot before the single upstream fetch, for both purposes", async () => {
+      const posting = await callWith({ q: `${QUERY} p`, purpose: "posting" });
+      expect(posting.status).toBe(200);
+      user = null;
+      const place = await callWith({ q: `${QUERY} a`, purpose: "place", ip: "203.0.113.7" });
+      expect(place.status).toBe(200);
+      expect(store.takeSlot).toHaveBeenCalledTimes(2);
+      expect(store.takeSlot).toHaveBeenCalledWith(3000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("reuses one cache entry across a posting caller and an anonymous place caller (one upstream fetch, shared key)", async () => {
+      const q = "77 Shared Cache Avenue Springfield";
+      const key = cacheKey(q, "nominatim.openstreetmap.org", SECRET);
+
+      // First caller (signed-in posting) misses the cache, fetches once, writes the row.
+      const first = await callWith({ q, purpose: "posting" });
+      expect(first.status).toBe(200);
+      expect(store.cacheGet).toHaveBeenLastCalledWith(key);
+      expect(store.cachePut).toHaveBeenCalledTimes(1);
+      const written = store.cachePut.mock.calls[0][1];
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // The shared cache now returns that row for the identical query.
+      store.cacheGet.mockResolvedValue(written as never);
+      fetchMock.mockClear();
+      store.takeSlot.mockClear();
+
+      // Second caller (anonymous place) hits the shared cache: no slot, no upstream.
+      user = null;
+      const second = await callWith({ q, purpose: "place", ip: "198.51.100.9" });
+      expect(second.status).toBe(200);
+      expect(await second.json()).toEqual({ state: "ok", matches: written });
+      expect(store.cacheGet).toHaveBeenLastCalledWith(key);
+      expect(store.takeSlot).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a cached purpose=place query makes no slot and no upstream call", async () => {
+      const cached = [{ label: "Cached town", lat: 1, lng: 2 }];
+      store.cacheGet.mockResolvedValue(cached);
+      user = null;
+      const res = await callWith({ purpose: "place", ip: "203.0.113.7" });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ state: "ok", matches: cached });
+      expect(store.takeSlot).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // Property 28 (route part): a private-home lookup is refused from config alone when
+  // the provider is public Nominatim, and allowed for a keyed non-public provider.
+  describe("private-home guard", () => {
+    it("refuses home=1 with 422 private_home_refused on public Nominatim, with no throttle, cache or upstream call", async () => {
+      const res = await callWith({ home: true, purpose: "posting" });
+      expect(res.status).toBe(422);
+      expect((await res.json()).state).toBe("private_home_refused");
+      expect(store.cacheGet).not.toHaveBeenCalled();
+      expect(store.takeSlot).not.toHaveBeenCalled();
+      expect(store.takeAnonSlot).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("refuses a crafted home=1 even for purpose=place on public Nominatim (decided from config, not the client)", async () => {
+      user = null;
+      const res = await callWith({ home: true, purpose: "place", ip: "203.0.113.7" });
+      expect(res.status).toBe(422);
+      expect((await res.json()).state).toBe("private_home_refused");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("allows home=1 for a keyed non-public provider (publicNominatim false): one upstream fetch", async () => {
+      setEnv({
+        GEOCODER_URL: "https://geo.example/search",
+        GEOCODER_API_KEY: "provider-key",
+        GEOCODER_API_KEY_PARAM: "apikey",
+      });
+      const res = await callWith({ home: true, purpose: "posting" });
+      expect(res.status).toBe(200);
+      expect((await res.json()).state).toBe("ok");
+      expect(store.takeSlot).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(new URL(fetchMock.mock.calls[0][0] as string).host).toBe("geo.example");
+    });
+  });
+
+  // Property 30 (route part): the anonymous limit and a missing/erroring limit store
+  // both stop upstream traffic; within the limit the request proceeds.
+  describe("anonymous limit", () => {
+    it("keys takeAnonSlot by the IP HMAC and never passes the raw IP to the store", async () => {
+      const ip = "203.0.113.42";
+      user = null;
+      await callWith({ purpose: "place", ip });
+      expect(store.takeAnonSlot).toHaveBeenCalledTimes(1);
+      const passed = store.takeAnonSlot.mock.calls[0][0];
+      expect(passed).toBe(anonymousClientId({ "x-forwarded-for": ip }, SECRET));
+      expect(passed).toMatch(/^[0-9a-f]{64}$/);
+      expect(passed).not.toContain(ip);
+    });
+
+    it("answers 429 rate_limited and makes no slot or upstream call when takeAnonSlot returns false", async () => {
+      store.takeAnonSlot.mockResolvedValue(false);
+      user = null;
+      const res = await callWith({ purpose: "place", ip: "203.0.113.7" });
+      expect(res.status).toBe(429);
+      expect((await res.json()).state).toBe("rate_limited");
+      expect(store.takeSlot).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("fails closed with 503 unavailable and no upstream call when takeAnonSlot throws", async () => {
+      store.takeAnonSlot.mockRejectedValue(new Error("anon store down"));
+      user = null;
+      const res = await callWith({ purpose: "place", ip: "203.0.113.7" });
+      expect(res.status).toBe(503);
+      expect((await res.json()).state).toBe("unavailable");
+      expect(store.takeSlot).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("proceeds to the shared cache and throttle when takeAnonSlot returns true", async () => {
+      user = null;
+      const res = await callWith({ purpose: "place", ip: "203.0.113.7" });
+      expect(res.status).toBe(200);
+      expect(store.takeAnonSlot).toHaveBeenCalledTimes(1);
+      expect(store.cacheGet).toHaveBeenCalledTimes(1);
+      expect(store.takeSlot).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call takeAnonSlot for purpose=posting", async () => {
+      await callWith({ purpose: "posting" });
+      expect(store.takeAnonSlot).not.toHaveBeenCalled();
+    });
+  });
+
+  // Requirement 21.12 / 23.5: the log line is only `[geocode] <state> <status> <purpose>`.
+  // The raw IP and the anonymous id never appear in logs, nor do the query, key or body.
+  describe("logging", () => {
+    it("logs only the purpose log line and never the IP, anonymous id, query or secrets across place paths", async () => {
+      const ip = "198.51.100.77";
+      const anonId = anonymousClientId({ "x-forwarded-for": ip }, SECRET);
+      const q = "41 Flamingo Boulevard Distinctiveplace";
+      const key = cacheKey(q, "nominatim.openstreetmap.org", SECRET);
+      user = null;
+
+      await callWith({ q, purpose: "place", ip }); // success
+      store.takeAnonSlot.mockResolvedValueOnce(false);
+      await callWith({ q: `${q} b`, purpose: "place", ip }); // rate limited
+      store.takeAnonSlot.mockRejectedValueOnce(new Error(`anon down for ${ip}`));
+      await callWith({ q: `${q} c`, purpose: "place", ip }); // fail closed
+      await callWith({ q, home: true, purpose: "place", ip }); // private home refused
+
+      const logs = allLogs();
+      expect(logs).toContain("[geocode]");
+      // Every geocode log line is the three-token form with a place purpose.
+      for (const line of logs.split("\n").filter((l) => l.includes("[geocode]"))) {
+        const body = line.slice(line.indexOf("[geocode]"));
+        expect(body).toMatch(/^\[geocode\] \w+ \d{3} (place|posting)(\s.*)?$/);
+      }
+      for (const secret of [ip, anonId, "Flamingo", "Distinctiveplace", key, SECRET, SERVICE_KEY, UA]) {
+        expect(logs).not.toContain(secret);
+      }
+    });
+
+    it("logs the resolved purpose, not the raw query parameter", async () => {
+      await callWith({ purpose: "posting" });
+      const logs = allLogs();
+      expect(logs).toMatch(/\[geocode\] ok 200 posting/);
+    });
   });
 });

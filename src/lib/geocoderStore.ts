@@ -1,6 +1,8 @@
 // Server only. The only file that calls the shared geocoder throttle and cache
-// (stage 14: cb_geocoder_take_slot, cb_geocoder_cache, cb_geocoder_purge_cache).
-// Pass a service role client; every object is service_role only.
+// (stage 14: cb_geocoder_take_slot, cb_geocoder_cache, cb_geocoder_purge_cache) and
+// the shared anonymous rate limit (stage 15: cb_geocoder_take_anon_slot,
+// cb_geocoder_purge_anon_limit). Pass a service role client; every object is
+// service_role only.
 //
 // Reads and the throttle THROW on any database error (including stage 14 not
 // applied). The route treats a throw as "store unavailable" and answers 503
@@ -17,6 +19,10 @@ export interface GeocoderStore {
   /** Writes with a 24 h expiry, then calls the purge. Errors are returned to the caller, not thrown. */
   cachePut(key: string, matches: PlaceMatch[]): Promise<{ ok: boolean; code?: string }>;
   purgeExpired(): Promise<number>;
+  /** true when the caller is within the anonymous limit; false when over. Throws on a database error (route fails closed). */
+  takeAnonSlot(clientHash: string): Promise<boolean>;
+  /** Deletes anon-limit rows older than the window; returns the count. Throws on a database error. */
+  purgeAnonExpired(): Promise<number>;
 }
 
 /** 24 h minus a minute, so the row stays inside the table check (expires_at <= created_at + 24 h) despite clock skew. */
@@ -30,6 +36,14 @@ export function createGeocoderStore(client: SupabaseClient): GeocoderStore {
   async function purgeExpired(): Promise<number> {
     const { data, error } = await client.rpc("cb_geocoder_purge_cache");
     if (error) throw fail(error.code, "purge");
+    return typeof data === "number" ? data : 0;
+  }
+
+  // Lets the SQL defaults (30 hits / 600 seconds window) decide the limit; the window
+  // is seconds, not milliseconds. Throws on any database error so the route fails closed.
+  async function purgeAnonExpired(): Promise<number> {
+    const { data, error } = await client.rpc("cb_geocoder_purge_anon_limit");
+    if (error) throw fail(error.code, "anon purge");
     return typeof data === "number" ? data : 0;
   }
 
@@ -73,9 +87,23 @@ export function createGeocoderStore(client: SupabaseClient): GeocoderStore {
       } catch {
         // A failed purge never fails the write; the hourly sweep retries it.
       }
+      try {
+        await purgeAnonExpired();
+      } catch {
+        // A failed anon-limit purge never fails the write; the hourly sweep retries it.
+      }
       return { ok: true };
     },
 
+    async takeAnonSlot(clientHash) {
+      // Pass only the hashed id; the SQL defaults set the 30 hits / 600 second window.
+      const { data, error } = await client.rpc("cb_geocoder_take_anon_slot", { p_client_hash: clientHash });
+      if (error) throw fail(error.code, "anon slot");
+      if (typeof data !== "boolean") throw fail(undefined, "anon slot (bad answer)");
+      return data;
+    },
+
     purgeExpired,
+    purgeAnonExpired,
   };
 }

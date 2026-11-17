@@ -53,8 +53,30 @@ describe("locationPickerActions", () => {
     expect(failureForState("busy")).toEqual({ kind: "busy", message: MESSAGES.busy });
     expect(failureForState("user_limit")).toEqual({ kind: "busy", message: MESSAGES.userLimit });
     expect(failureForState("query_refused")).toEqual({ kind: "refused", message: MESSAGES.refused });
+    expect(failureForState("private_home_refused")).toEqual({
+      kind: "private_home",
+      message: MESSAGES.privateHomeSearch,
+    });
     expect(failureForState("unavailable")).toEqual({ kind: "unavailable", message: MESSAGES.unavailable });
     expect(failureForState(undefined)?.kind).toBe("unavailable");
+  });
+
+  it("adds home=1 for a private-home lookup and sends only the prepared text", async () => {
+    const f = ok({ state: "ok", matches: [] });
+    const out = await runLookup("  12   Main  Street ", false, f, true);
+    expect(out).toEqual({ status: "ok", matches: [] });
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(f).toHaveBeenCalledWith("/api/geocode?q=12%20Main%20Street&home=1");
+  });
+
+  it("flags a private-home refusal so the picker can switch to manual placement", async () => {
+    const f = ok({ state: "private_home_refused" });
+    const out = await runLookup("12 Main Street", false, f, true);
+    expect(out).toMatchObject({
+      status: "failed",
+      privateHomeRefused: true,
+      failure: { kind: "private_home", message: MESSAGES.privateHomeSearch },
+    });
   });
 
   it("turns a network error or a failed state into a failure", async () => {

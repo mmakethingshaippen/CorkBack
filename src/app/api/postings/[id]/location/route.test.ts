@@ -51,7 +51,9 @@ describe("PATCH /api/postings/[id]/location", () => {
         expect(h.rpcCalls).toHaveLength(1);
         expect(h.rpcCalls[0].fn).toBe("cb_update_posting_location");
         expect(Object.keys(h.rpcCalls[0].args).sort()).toEqual(["p_lat", "p_lng", "p_posting_id", "p_precision", "p_time_zone"]);
-        expect(h.rpcCalls[0].args).toMatchObject({ p_posting_id: ID, p_lat: lat, p_lng: lng, p_precision: precision });
+        // The body round-trips through JSON before the route reads it, which normalizes -0 to 0.
+        // Add 0 so the toMatchObject comparison (Object.is semantics) matches the normalized value.
+        expect(h.rpcCalls[0].args).toMatchObject({ p_posting_id: ID, p_lat: lat + 0, p_lng: lng + 0, p_precision: precision });
         expect(h.fromCalls).toBe(0);
       }),
       { numRuns: 100 },

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { CATEGORIES } from "@/lib/categories";
+import { resolveGeocoderConfig } from "@/lib/geocoderConfig";
+import { createGeocoderStore } from "@/lib/geocoderStore";
+import { runGeocodeLookup } from "@/lib/geocodeLookup";
 
 /**
  * Alerts CRUD for the signed-in user. Create, list, delete — no edit flow yet.
@@ -15,15 +18,26 @@ function notConfigured() {
   );
 }
 
-/** Geocode a town name to a center using the free OpenStreetMap Nominatim API (no key). */
+/**
+ * Resolve a town name to a center through the shared Geocoder_Service path
+ * (`purpose=place`): the same application-wide throttle and shared cache as the
+ * posting picker and the home board (Requirement 21.5, 21.6, 21.7). This server
+ * route already requires a signed-in user, so it uses the shared throttle+cache
+ * but not the anonymous per-IP limit. It calls the shared server-side lookup core
+ * directly rather than making an HTTP self-call, and takes the first/best public
+ * place match's center. When the geocoder is disabled (no config), it resolves to
+ * null so a map point still works and the existing "Could not find a town…" error
+ * is returned by the caller. The town text is never logged here.
+ */
 async function geocodeTown(name: string): Promise<{ lat: number; lng: number } | null> {
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(name)}`;
-    const res = await fetch(url, { headers: { "User-Agent": "CorkBack/1.0 (alerts geocode)" } });
-    if (!res.ok) return null;
-    const rows = (await res.json()) as Array<{ lat: string; lon: string }>;
-    if (!rows.length) return null;
-    return { lat: Number(rows[0].lat), lng: Number(rows[0].lon) };
+    const config = resolveGeocoderConfig(process.env);
+    if (!config.enabled) return null;
+    const store = createGeocoderStore(createAdminClient());
+    const result = await runGeocodeLookup({ query: name, privateHome: false, config, store });
+    if (result.state !== "ok" || !result.matches?.length) return null;
+    const { lat, lng } = result.matches[0].point;
+    return { lat, lng };
   } catch {
     return null;
   }

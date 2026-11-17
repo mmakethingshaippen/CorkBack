@@ -132,7 +132,10 @@ export function nudgePin(point: LatLng, dir: "n" | "s" | "e" | "w", meters = 10)
 
 /** The detail page note for an approximate posting, otherwise null. */
 export function locationNote(precision: StoredPrecision): string | null {
-  return precision === "approximate" ? "Approximate location. The exact address is not shown." : null;
+  // Describes an approximate area without claiming the pin guarantees anonymity (Requirements 9.10, 23.6, 23.8).
+  return precision === "approximate"
+    ? "Approximate location. The pin marks a nearby area, not the exact spot. The exact address is not shown."
+    : null;
 }
 
 // ---------------------------------------------------------------------------

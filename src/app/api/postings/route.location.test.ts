@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fc from "fast-check";
+import { haversineMeters } from "@/lib/domain";
+import type { PlaceMatch } from "@/lib/geocode";
+import { emptyDraft, locationReducer, publishableLocation } from "@/lib/postingLocation";
 
 const h = vi.hoisted(() => ({
   user: { id: "11111111-1111-4111-8111-111111111111" } as { id: string } | null,
@@ -69,5 +72,63 @@ describe("POST /api/postings location", () => {
     h.user = null;
     expect((await call({ ...base, location: loc(41.5, -90.5) })).status).toBe(401);
     expect(h.inserts).toHaveLength(0);
+  });
+});
+
+/**
+ * Property 31 (stored-row surface): An approximate posting exposes only the
+ * approximate pin on every surface.
+ * Feature: posting-location-confirmation. **Validates: Requirements 23.1, 23.2, 23.3**
+ */
+describe("POST /api/postings approximate-mode storage surface (Property 31)", () => {
+  const privateHomeMatch = (point: { lat: number; lng: number }, houseNumber: number): PlaceMatch => ({
+    id: `node${houseNumber}`,
+    name: `${houseNumber} Maple Street`,
+    addressLine: `${houseNumber} Maple Street`,
+    area: "Elmwood",
+    displayName: `${houseNumber} Maple Street, Elmwood`,
+    point,
+    level: "address",
+  });
+
+  it("stores only the approximate pin and precision, never the exact point or a house number", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.record({ lat: fc.double({ min: 30, max: 48, noNaN: true }), lng: fc.double({ min: -120, max: -75, noNaN: true }) }),
+        fc.integer({ min: 1, max: 99999 }),
+        fc.tuple(fc.double({ min: 0, max: 1, maxExcluded: true, noNaN: true }), fc.double({ min: 0, max: 1, maxExcluded: true, noNaN: true })) as fc.Arbitrary<[number, number]>,
+        async (exact, houseNumber, rand) => {
+          h.inserts = [];
+          // Build a confirmed private-home draft entirely in the browser-side model.
+          let d = emptyDraft();
+          d = locationReducer(d, { type: "private_home_set", value: true, rand });
+          d = locationReducer(d, { type: "match_selected", match: privateHomeMatch(exact, houseNumber), source: "search" });
+          d = locationReducer(d, { type: "proposal_confirmed", rand });
+          const payload = publishableLocation(d);
+          expect(payload).not.toBeNull();
+          if (!payload) return;
+
+          const res = await call({ ...base, placeLabel: d.label.text, location: payload });
+          expect(res.status).toBe(200);
+          expect(h.inserts).toHaveLength(1);
+          const row = h.inserts[0];
+
+          // The stored point is the approximate pin, never the exact one.
+          expect(row.lat).toBe(payload.lat);
+          expect(row.lng).toBe(payload.lng);
+          expect(row.location_precision).toBe("approximate");
+          expect(row.lat === exact.lat && row.lng === exact.lng).toBe(false);
+          expect(haversineMeters(exact, { lat: row.lat as number, lng: row.lng as number })).toBeGreaterThanOrEqual(149);
+
+          // The stored place_label (the "Near {area}" rule) carries no house number.
+          expect(typeof row.place_label).toBe("string");
+          expect((row.place_label as string).includes(String(houseNumber))).toBe(false);
+          expect((row.place_label as string).startsWith("Near ")).toBe(true);
+          // The stored point is the approximate pin, never the exact pair.
+          expect(row.lat === exact.lat && row.lng === exact.lng).toBe(false);
+        },
+      ),
+      { numRuns: 100 },
+    );
   });
 });

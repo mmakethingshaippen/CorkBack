@@ -41,7 +41,19 @@ export const CONTACT_NOTE = "This looks like a contact or return address. It may
 export const LOST_FOUND_LINE = "For Lost and Found, this is where the item was lost or found.";
 export const NO_ADDRESS_TEXT = "No address was found on the flyer. Search for the place or tap the map.";
 
+// Req 9.3, audited for Req 23.6 and 23.8: this copy describes an approximate area and
+// makes no claim that the displaced pin guarantees anonymity or hides the poster, so it
+// is kept as-is. The "about a quarter mile (400 m)" and "The street address is not shown"
+// statements are preserved. The honest anonymity caveat is carried by FLYER_IMAGE_WARNING.
 export const PRIVATE_HOME_EXPLANATION = "Visitors will see a pin about a quarter mile (400 m) from this place, not the exact spot. The street address is not shown. Name the area, such as a neighborhood or street, and leave out the house number.";
+
+// Req 23.7: a separate warning, distinct from the pin and the approximate-area note,
+// that the flyer image or the posting text can still reveal an address.
+export const FLYER_IMAGE_WARNING = "A flyer image or words in your posting can still show an address. The approximate pin does not hide what the image or text says.";
+
+// Req 22.5, 22.6: shown before any private-home lookup leaves the browser, and again
+// if the service refuses a private-home lookup on a public map search service.
+export const PRIVATE_HOME_SEARCH_NOTE = MESSAGES.privateHomeSearch;
 
 const NOTICE_TEXT: Record<LocationNotice, string> = {
   label_cleared: "The pin moved, so the place name was cleared. Add a name for the new spot.",
@@ -100,6 +112,9 @@ export function LocationPicker({
   const [busy, setBusy] = useState(false);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [deviceBusy, setDeviceBusy] = useState(false);
+  // Req 22.2: once the service refuses a private-home lookup on public Nominatim,
+  // offer manual pin placement only for a private home and send no more lookups.
+  const [privateHomeManualOnly, setPrivateHomeManualOnly] = useState(false);
   const sourceRef = useRef<LookupSource>("search");
   const busyRef = useRef(false);
   const [, setReady] = useState(0);
@@ -208,17 +223,30 @@ export function LocationPicker({
 
   async function lookup(text: string, source: LookupSource) {
     if (busyRef.current) return;
+    // A private home on a public map search service never sends a lookup: the
+    // poster places the pin by hand. Show the explanation instead of querying.
+    if (draft.privateHome && privateHomeManualOnly) {
+      setFormMessage(MESSAGES.privateHomeSearch);
+      return;
+    }
     sourceRef.current = source;
     setFormMessage(null);
     busyRef.current = true;
     setBusy(true);
     try {
-      const out = await runLookup(text, false, (url) => fetch(url));
+      const out = await runLookup(text, false, (url) => fetch(url), draft.privateHome);
       if (out.status === "invalid") {
         setFormMessage(out.message);
         if (out.failure) dispatch(searchFailedEvent(out.failure));
       } else if (out.status === "failed") {
-        dispatch(searchFailedEvent(out.failure));
+        if (out.privateHomeRefused) {
+          // The service refused a private-home lookup. Switch to manual-only and
+          // show the explanation; make no further private-home lookup.
+          setPrivateHomeManualOnly(true);
+          setFormMessage(out.failure.message);
+        } else {
+          dispatch(searchFailedEvent(out.failure));
+        }
       } else if (out.status === "ok") {
         dispatch({ type: "matches_loaded", matches: out.matches, autoPropose: true, source });
       }
@@ -245,6 +273,9 @@ export function LocationPicker({
   }
 
   const noticeText = draft.notice ? NOTICE_TEXT[draft.notice] : null;
+  // When the place is a private home and the service has refused a public lookup,
+  // the search and "Find on map" actions are disabled: the poster places the pin.
+  const lookupBlockedForPrivateHome = draft.privateHome && privateHomeManualOnly;
   const searchId = `${ids}-search`;
   const labelId = `${ids}-label`;
   const homeId = `${ids}-home`;
@@ -276,7 +307,7 @@ export function LocationPicker({
                 <button
                   type="button"
                   className={`${NAVY_BTN} mt-2`}
-                  disabled={busy}
+                  disabled={busy || lookupBlockedForPrivateHome}
                   onClick={() => void lookup(c.text, "flyer_candidate")}
                 >
                   Find on map
@@ -288,6 +319,14 @@ export function LocationPicker({
       ) : null}
 
       {candidates.length === 0 && !initial ? <p className="text-sm text-ink/80">{NO_ADDRESS_TEXT}</p> : null}
+
+      {/* Req 22.5, 22.6: before any private-home lookup leaves the browser, explain
+          that a home address is not sent to a public map search service. Navy/neutral. */}
+      {draft.privateHome ? (
+        <p role="status" aria-live="polite" className="rounded-card border-2 border-deep-navy bg-paper p-3 text-sm text-ink">
+          {PRIVATE_HOME_SEARCH_NOTE}
+        </p>
+      ) : null}
 
       {/* Not a <form>: the picker sits inside the posting form, and a nested form submits the page natively. */}
       <div role="search" className="space-y-2">
@@ -305,12 +344,17 @@ export function LocationPicker({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                void lookup(query, "search");
+                if (!lookupBlockedForPrivateHome) void lookup(query, "search");
               }
             }}
             className="min-h-[50px] min-w-0 flex-1 rounded-control border-2 border-deep-navy bg-white px-4 text-ink"
           />
-          <button type="button" className={NAVY_SOLID} disabled={busy} onClick={() => void lookup(query, "search")}>
+          <button
+            type="button"
+            className={NAVY_SOLID}
+            disabled={busy || lookupBlockedForPrivateHome}
+            onClick={() => void lookup(query, "search")}
+          >
             {busy ? "Searching…" : "Search"}
           </button>
         </div>
@@ -414,12 +458,17 @@ export function LocationPicker({
             id={homeId}
             type="checkbox"
             checked={draft.privateHome}
-            onChange={(e) => dispatch({ type: "private_home_set", value: e.target.checked, rand: rand() })}
+            onChange={(e) => {
+              if (!e.target.checked) setPrivateHomeManualOnly(false);
+              dispatch({ type: "private_home_set", value: e.target.checked, rand: rand() });
+            }}
             className="mt-1 h-5 w-5 accent-deep-navy"
           />
           <span>This place is a private home</span>
         </label>
         <p className="mt-1 text-xs text-ink/70">{PRIVATE_HOME_EXPLANATION}</p>
+        {/* Req 23.7: separate from the pin and the approximate-area note. */}
+        <p className="mt-2 text-xs text-ink/70">{FLYER_IMAGE_WARNING}</p>
       </div>
 
       <div>

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { locationNote } from "./postingLocation";
 
 /**
  * Guards for the posting-location flow.
@@ -22,6 +23,13 @@ function walk(dir: string): string[] {
 const rel = (f: string) => relative(ROOT, f).split(sep).join("/");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const exists = (p: string) => existsSync(join(ROOT, p));
+
+/** Read an exported string-literal constant from a source file without importing it. */
+function stringConst(file: string, name: string): string {
+  const m = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(read(file));
+  if (!m) throw new Error(`could not read ${name} from ${file}`);
+  return JSON.parse(`"${m[1]}"`) as string;
+}
 
 /** Remove comments so a mention in prose is not mistaken for code. */
 function stripComments(text: string): string {
@@ -99,6 +107,70 @@ describe("posting-location guards", () => {
       for (const p of phrases) if (text.includes(p)) hits.push(`${f}: ${p}`);
     }
     expect(hits).toEqual([]);
+  });
+
+  it("no private-home or approximate copy under src claims a displaced pin guarantees anonymity", () => {
+    // Requirement 23.6/23.8: the private-home explanation and the approximate note describe
+    // an approximate area and must never promise anonymity or that the poster cannot be traced.
+    const BANNED = [
+      /\banonymous\b/i,
+      /\banonymity\b/i,
+      /can['’]?t be identified/i,
+      /cannot be identified/i,
+      /can['’]?t be traced/i,
+      /cannot be traced/i,
+      /untraceable/i,
+      /hides? (?:your|the poster|who you are)/i,
+      /keeps? you anonymous/i,
+    ];
+    // String literals that make up the private-home / approximate-location copy.
+    const PICKER = "src/components/map/LocationPicker.tsx";
+    const COPY: { label: string; text: string }[] = [
+      { label: "locationNote(approximate)", text: locationNote("approximate") ?? "" },
+      { label: "PRIVATE_HOME_EXPLANATION", text: stringConst(PICKER, "PRIVATE_HOME_EXPLANATION") },
+      { label: "FLYER_IMAGE_WARNING", text: stringConst(PICKER, "FLYER_IMAGE_WARNING") },
+    ];
+    const hits: string[] = [];
+    for (const { label, text } of COPY) {
+      for (const re of BANNED) if (re.test(text)) hits.push(`${label}: matched ${re}`);
+    }
+    expect(hits).toEqual([]);
+
+    // A broad sweep of the picker and detail copy files catches any inline anonymity claim
+    // added later next to the approximate-area or private-home wording.
+    for (const f of ["src/components/map/LocationPicker.tsx", "src/app/p/[id]/page.tsx"].filter(exists)) {
+      const code = stripComments(read(f));
+      const windows = [...code.matchAll(/approximate|private home/gi)].map((m) =>
+        code.slice(Math.max(0, m.index! - 160), m.index! + 160),
+      );
+      for (const w of windows) {
+        for (const re of BANNED) if (re.test(w)) hits.push(`${f}: "${re}" near approximate/private-home copy`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it("the approximate copy keeps its honest statements and the separate flyer-image warning exists", () => {
+    const PICKER = "src/components/map/LocationPicker.tsx";
+    const explanation = stringConst(PICKER, "PRIVATE_HOME_EXPLANATION");
+    const flyerWarning = stringConst(PICKER, "FLYER_IMAGE_WARNING");
+
+    // Requirement 23.8: keep "about a quarter mile (400 m)" and "The street address is not shown".
+    expect(explanation).toContain("about a quarter mile (400 m)");
+    expect(explanation).toContain("The street address is not shown");
+
+    // Requirement 23.6: the detail note still states the exact address is not shown.
+    expect(locationNote("approximate")).toContain("The exact address is not shown.");
+    expect(locationNote("exact")).toBeNull();
+    expect(locationNote("unreviewed")).toBeNull();
+
+    // Requirement 23.7: a separate warning, distinct from the pin and the approximate note,
+    // that a flyer image or the posting text can still reveal an address.
+    expect(flyerWarning).toBe(
+      "A flyer image or words in your posting can still show an address. The approximate pin does not hide what the image or text says.",
+    );
+    // It is genuinely rendered by the picker, not just exported.
+    expect(read(PICKER)).toContain("FLYER_IMAGE_WARNING");
   });
 
   it("package.json has no new dependency", () => {

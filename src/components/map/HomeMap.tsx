@@ -510,17 +510,28 @@ export function HomeMap({
     setSearching(true);
     setSearchError(null);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
-        { headers: { "Accept-Language": "en" } },
-      );
-      const rows = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
-      if (!rows.length) {
-        setSearchError(`Couldn't find "${q}". Try a nearby town or city.`);
+      // The shared geocoder service: one application-wide throttle and one
+      // cache for every lookup, signed in or not (purpose=place serves a
+      // signed-out viewer). HomeMap only makes this network call; it imports no
+      // server-only geocoder module and stays a client component.
+      const res = await fetch(`/api/geocode?purpose=place&q=${encodeURIComponent(q)}`);
+      const body = (await res.json().catch(() => null)) as
+        | { state?: string; matches?: Array<{ point?: { lat: number; lng: number } }> }
+        | null;
+      const state = body?.state;
+      const first = state === "ok" ? body?.matches?.[0]?.point : undefined;
+      if (state !== "ok" || !first) {
+        // No match is a plain "not found"; every other non-ok state
+        // (unavailable/busy/rate_limited/query_refused/…) is a quiet
+        // "search unavailable". Browsing and the board keep working either way.
+        setSearchError(
+          state === "ok"
+            ? `Couldn't find "${q}". Try a nearby town or city.`
+            : "Town search is unavailable right now. Please try again.",
+        );
         return;
       }
-      const lat = Number(rows[0].lat);
-      const lng = Number(rows[0].lon);
+      const { lat, lng } = first;
       // The searched place becomes the reference until the viewer acts again.
       const next = referenceAfterSearch({ lat, lng, name: q });
       explicitReferenceRef.current = true;
