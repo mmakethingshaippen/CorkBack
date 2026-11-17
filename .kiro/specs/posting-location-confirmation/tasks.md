@@ -293,7 +293,7 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
 - [x] 12. Final checkpoint - Ensure all tests pass, ask the user if questions arise.
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. Stage 7: One geocoder for every lookup, private-home safety, approximate-mode audit
+- [x] 13. Stage 7: One geocoder for every lookup, private-home safety, approximate-mode audit
   - Stages 0 to 6 are complete and are NOT reopened. This stage starts from `feature/posting-location-confirmation` at `e0bf7d1` (a direct child of `origin/main` at `40ac4ad`). Keep working on that branch. Add no dependency. Keep `next-env.d.ts` and `supabase/.temp/` out of every commit. New SQL (stage15) is additive, tested only in `supabase/isolated-test`, and stays pending the Owner's review.
   - [x] 13.1 Confirm the branch is current before Stage 7 work
     - Run `git fetch`, then `git log --oneline origin/main..HEAD` and `git log --oneline HEAD..origin/main`. Confirm HEAD (`e0bf7d1` or later) contains every `origin/main` commit (`40ac4ad`) and that `HEAD..origin/main` is empty. Local `main` being behind at `7a273b5` is irrelevant. Record the result in `BUILD_LOG.md`. Make no change to `main`
@@ -357,14 +357,14 @@ Rules that apply to every task (Requirements 16, 17, 19, 20):
   - [x] 13.17 Correct the release checklist against the SQL
     - In `.kiro/specs/posting-location-confirmation/release-checklist.md` verify every stage 14 object name against `supabase/stage14_posting_location*.sql` and correct any mismatch. The actual stage 14 objects are: column `postings.location_precision`; function `public.cb_update_posting_location(uuid, double precision, double precision, text, text)`; table `public.cb_geocoder_throttle`; function `public.cb_geocoder_take_slot(integer)`; table `public.cb_geocoder_cache`; function `public.cb_geocoder_purge_cache()`. Add the stage15 files to the SQL order (preflight, migration, verify, rollback) after stage 14. Fix stale deployment ids and URLs: the current production and code rollback target is `dpl_9PELR85c5x7oYKsYuYegUzeTQvBN` at commit `40ac4ad`; the protected preview is `dpl_BxD3BA8ABE31cKAAHK7vA6cMjghh`. Add `GEOCODER` env-var notes for the anonymous limit if any are new. Update the residual-risk section to say the home and alerts lookups now go through the shared throttle
     - _Requirements: 16.1, 16.2, 16.6, 19.10, 24.2_
-  - [~] 13.18 Verify the branch includes origin/main and prior release fixes, and refresh the protected preview
+  - [x] 13.18 Verify the branch includes origin/main and prior release fixes, and refresh the protected preview
     - Re-run the branch verification of 13.1 at merge time: confirm `feature/posting-location-confirmation` contains current `origin/main` and all previous release fixes, and report any differences (`git log --oneline HEAD..origin/main` must be empty; list anything that is not). Then build a fresh Vercel preview of the final branch commit in demo mode (Supabase and geocoder variables empty, no production connection), confirm Deployment Protection is on, and record the deployment id, the commit and the protection status in `BUILD_LOG.md`. The protected preview is `dpl_BxD3BA8ABE31cKAAHK7vA6cMjghh` until refreshed. Do not deploy to production, do not merge to `main`, do not apply SQL
     - _Requirements: 16.4, 16.5, 16.6, 16.7_
 
-- [~] 14. Checkpoint - Stage 7
+- [x] 14. Checkpoint - Stage 7
   - Ensure all tests pass, ask the user if questions arise.
 
-- [~] 15. Final checkpoint - Stage 7
+- [ ] 15. Final checkpoint - Stage 7
   - Ensure all tests pass (unit, isolated-database, and the browser harness if it can run), confirm nothing was applied to production and `main` is untouched, and ask the user if questions arise.
 
 ## Notes
