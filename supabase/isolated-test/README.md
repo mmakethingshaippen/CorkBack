@@ -124,3 +124,16 @@ What it covers:
 - Rollback: unread answers `{ supported: false }` and messages are unchanged.
 
 Result on 2026-11-16: 30 passed, 0 failed. It found a precision bug in `advanceMarker` and `unreadCount`, which compared timestamps at millisecond precision while Postgres stores microseconds. The bug is fixed in `src/lib/unread.ts` and covered by `unread.micro.test.ts`.
+
+## location.mjs (stage 14 posting location)
+
+`$env:CB_ISO_DIR = "$env:TEMP\cb-iso"; node supabase\isolated-test\location.mjs`
+
+Local run only: embedded PostgreSQL 17 and PostgREST 14.18 on this machine. The script refuses to start (exit 2) if an
+environment variable names the production project or a hosted database host. It loads the production chain through stage 8,
+seeds three synthetic postings, then runs the stage 14 preflight, the migration (twice), `verify` (requires the
+`ALL CHECKS PASS` row and checks that its transaction rolled back), an `md5` of the posting rows before and after, PostgREST
+checks (the author JWT updates its posting, another user's JWT gets `CB404`, an invalid precision gets `22023`, and `anon` and
+`authenticated` are refused on the geocoder tables and functions), the rollback (every stage 14 object gone, the stage 8 insert
+grants back exactly, run twice), and the migration again. It prints `PASS` and `FAIL` lines and exits non-zero on any failure.
+Smoke run: 40 passed, 0 failed. The database property tests (task 5.5) extend this file.

@@ -41,8 +41,9 @@ on conflict (slug) do nothing;
 -- ---------------------------------------------------------------------------
 -- postings
 -- Expiry preset is stored so property tests can assert expires_at = created + preset.
--- lat/lng is the PINNED location (already nudged, bounded near the poster). The
--- poster's raw device location is never stored or exposed.
+-- lat/lng is the PINNED location: where the event or listing takes place, as
+-- confirmed by the poster (or an approximate pin for a private home). A device
+-- position is stored only if the poster confirms it as the pin.
 -- ---------------------------------------------------------------------------
 do $$ begin
   create type expiry_preset as enum ('24h', '3d', '1w', '2w', '1m');
@@ -58,7 +59,7 @@ create table if not exists public.postings (
   rsvp_url     text,                              -- at most one external link
   event_date   date,
   event_time   text,
-  place_label  text not null default '',          -- nudged board/venue label (free text)
+  place_label  text not null default '',          -- venue/listing label (free text), matches the pin
   lat          double precision not null,
   lng          double precision not null,
   expiry       expiry_preset not null,
