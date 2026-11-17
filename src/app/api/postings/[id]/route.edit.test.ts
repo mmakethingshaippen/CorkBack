@@ -9,11 +9,17 @@ const h = vi.hoisted(() => ({
   row: null as Record<string, unknown> | null,
   updates: [] as Record<string, unknown>[],
   updateResult: { data: [{ id: "x" }], error: null } as { data: unknown; error: unknown },
+  rpcCalls: [] as { fn: string; args: Record<string, unknown>; updatesSoFar: number }[],
+  rpcResult: { data: null, error: null } as { data: unknown; error: { code: string; message: string } | null },
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: h.user } }) },
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      h.rpcCalls.push({ fn, args, updatesSoFar: h.updates.length });
+      return h.rpcResult;
+    },
     from: (table: string) => {
       const b: Record<string, unknown> = {};
       b.select = () => b;
@@ -64,8 +70,76 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.invalid";
   h.user = { id: "11111111-1111-4111-8111-111111111111" };
   h.updates = [];
+  h.rpcCalls = [];
+  h.rpcResult = { data: null, error: null };
   h.updateResult = { data: [{ id: POSTING_ID }], error: null };
   h.row = baseRow();
+});
+
+const PIN_COLS = ["lat", "lng", "time_zone", "location_precision"];
+const LOC = { lat: 41.6, lng: -90.4, confirmed: true, source: "search", precision: "approximate" };
+const EVENT = { title: "Show", categorySlug: "music", eventDate: "2090-05-01", placeLabel: "Hall" };
+
+/** Feature: posting-location-confirmation, Properties 16, 17, 25 (route part). */
+describe("PATCH /api/postings/[id] location step", () => {
+  it("without a location: no pin column in the update and no rpc call (Property 16)", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.constantFrom("Show", "Gig", "  Night  "), fc.constantFrom("Hall", "Park", null), async (title, place) => {
+        h.updates = []; h.rpcCalls = [];
+        const res = await call({ ...EVENT, title, placeLabel: place });
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ id: POSTING_ID });
+        expect(h.rpcCalls).toHaveLength(0);
+        for (const k of PIN_COLS) expect(h.updates[0]).not.toHaveProperty(k);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it("with a location: content update has no pin columns, then one rpc call, and the new pin is returned (Property 17)", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.double({ min: 30, max: 48, noNaN: true }), fc.double({ min: -120, max: -75, noNaN: true }), fc.constantFrom("exact", "approximate"), async (lat, lng, precision) => {
+        h.updates = []; h.rpcCalls = [];
+        const res = await call({ ...EVENT, location: { lat, lng, confirmed: true, source: "pin", precision } });
+        expect(res.status).toBe(200);
+        expect(h.updates).toHaveLength(1);
+        for (const k of PIN_COLS) expect(h.updates[0]).not.toHaveProperty(k);
+        expect(h.rpcCalls).toHaveLength(1);
+        const c = h.rpcCalls[0];
+        expect(c.fn).toBe("cb_update_posting_location");
+        expect(c.updatesSoFar).toBe(1); // content first
+        expect(Object.keys(c.args).sort()).toEqual(["p_lat", "p_lng", "p_posting_id", "p_precision", "p_time_zone"]);
+        expect(c.args).toMatchObject({ p_posting_id: POSTING_ID, p_lat: lat, p_lng: lng, p_precision: precision });
+        const body = await res.json();
+        expect(body.id).toBe(POSTING_ID);
+        expect(body.location).toEqual({ lat, lng, precision, timeZone: c.args.p_time_zone });
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it("rpc failure: 500 location_failed with the exact message, content update already made (Property 25)", async () => {
+    h.rpcResult = { data: null, error: { code: "XX000", message: "boom" } };
+    const res = await call({ ...EVENT, location: LOC });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "Your other changes were saved, but the location was not.", code: "location_failed" });
+    expect(h.updates).toHaveLength(1);
+    expect(h.rpcCalls).toHaveLength(1);
+  });
+
+  it("maps CB404 and CB409 to 409 and 22023 to 400", async () => {
+    for (const [code, status] of [["CB404", 409], ["CB409", 409], ["22023", 400]] as const) {
+      h.rpcResult = { data: null, error: { code, message: "x" } };
+      expect((await call({ ...EVENT, location: LOC })).status).toBe(status);
+    }
+  });
+
+  it("an invalid location writes nothing and calls no rpc", async () => {
+    const res = await call({ ...EVENT, location: { ...LOC, confirmed: false } });
+    expect(res.status).toBe(400);
+    expect(h.updates).toHaveLength(0);
+    expect(h.rpcCalls).toHaveLength(0);
+  });
 });
 
 describe("PATCH /api/postings/[id] write sets", () => {
@@ -150,7 +224,8 @@ describe("EditPostingForm cancel (source contract)", () => {
     const tag = src.slice(start, cancel);
     expect(tag).toContain("href={`/p/${postingId}`}");
     expect(tag).not.toMatch(/onClick|fetch/);
-    expect(src.match(/fetch\(/g) ?? []).toHaveLength(1); // only the save request
+    // Only the save request and the location Retry (sends only the location block).
+    expect(src.match(/fetch\(/g) ?? []).toHaveLength(2);
   });
 });
 

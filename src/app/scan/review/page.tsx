@@ -12,7 +12,7 @@ export default async function ReviewPage() {
       <TopBar back={{ href: "/scan", label: "Back to scan" }} />
       <div className="px-4">
         <h1 className="text-2xl font-bold text-ink">Make the details clear.</h1>
-        <p className="mt-1 text-ink/70">Check and edit every field before it goes public. Fields from a scan are filled in; for a manual posting, enter them here.</p>
+        <p className="mt-1 text-ink/70">Check and edit every field before it goes public. Fields from a scan are filled in; for a manual posting, enter them here. You confirm the place on the map before you publish.</p>
       </div>
       <div className="mx-auto max-w-md px-4 pt-4">
         {viewer ? <ReviewForm /> : <SignInToTakePart action="publish a flyer" />}

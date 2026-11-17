@@ -2,15 +2,21 @@ import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import { validatePostingInput } from "./postingInput";
 import { CATEGORIES } from "./categories";
-import { EXPIRY_PRESETS, haversineMeters, MAX_NUDGE_METERS } from "./domain";
+import { EXPIRY_PRESETS } from "./domain";
 
 const now = new Date("2025-01-01T00:00:00Z");
 const real = { lat: 51.5416, lng: -0.1426 };
+const loc = (p: { lat: number; lng: number }, precision = "exact") => ({
+  ...p,
+  source: "search",
+  confirmed: true,
+  precision,
+});
 const base = () => ({
   title: "Jumble sale",
   categorySlug: CATEGORIES[0].slug,
   expiry: "1w",
-  real,
+  location: loc(real),
 });
 
 describe("validatePostingInput", () => {
@@ -31,15 +37,27 @@ describe("validatePostingInput", () => {
     expect(validatePostingInput({ ...base(), rsvpUrl: "javascript:alert(1)" }, now).ok).toBe(false);
   });
 
-  it("requires a poster location and rejects bad presets", () => {
-    expect(validatePostingInput({ ...base(), real: undefined }, now).ok).toBe(false);
-    expect(validatePostingInput({ ...base(), real: { lat: NaN, lng: 0 } }, now).ok).toBe(false);
+  it("requires a confirmed location and rejects bad presets", () => {
+    const missing = "Choose where this takes place on the map before publishing.";
+    expect(validatePostingInput({ ...base(), location: undefined }, now)).toEqual({ ok: false, error: missing });
+    expect(validatePostingInput({ ...base(), location: { ...loc(real), confirmed: false } }, now)).toEqual({ ok: false, error: missing });
+    expect(validatePostingInput({ ...base(), location: loc({ lat: NaN, lng: 0 }) }, now).ok).toBe(false);
+    expect(validatePostingInput({ ...base(), location: { ...loc(real), source: "gps" } }, now).ok).toBe(false);
+    expect(validatePostingInput({ ...base(), location: loc(real, "fuzzy") }, now).ok).toBe(false);
     expect(validatePostingInput({ ...base(), expiry: "2d" }, now).ok).toBe(false);
   });
 
-  it("result never carries the raw location", () => {
-    const r = validatePostingInput({ ...base(), desired: { lat: real.lat + 1, lng: real.lng } }, now);
-    expect(r.ok && JSON.stringify(r.value)).not.toContain(String(real.lat));
+  it("rejects the retired real and desired fields", () => {
+    const { location: _l, ...rest } = base();
+    expect(validatePostingInput({ ...rest, real, desired: real }, now)).toEqual({
+      ok: false,
+      error: "Reload the page and choose where this takes place.",
+    });
+  });
+
+  it("returns the submitted point and precision", () => {
+    const r = validatePostingInput({ ...base(), location: loc({ lat: 40.1, lng: -73.9 }, "approximate") }, now);
+    expect(r.ok && [r.value.pin, r.value.precision]).toEqual([{ lat: 40.1, lng: -73.9 }, "approximate"]);
   });
 
   it("stores the posting's IANA time zone from the pin", () => {
@@ -51,7 +69,7 @@ describe("validatePostingInput", () => {
     // 2026-11-17 03:00 UTC = 2026-11-16 19:00 in California.
     const at = new Date("2026-11-17T03:00:00Z");
     const berkeley = { lat: 37.8716, lng: -122.2727 };
-    const ev = (over: Record<string, unknown>) => ({ ...base(), real: berkeley, ...over });
+    const ev = (over: Record<string, unknown>) => ({ ...base(), location: loc(berkeley), ...over });
 
     it("rejects a past event date", () => {
       const r = validatePostingInput(ev({ eventDate: "2024-11-16" }), at);
@@ -94,20 +112,16 @@ describe("validatePostingInput", () => {
     });
   });
 
-  /** Validates: Requirements 4.3, 4.5 */
-  it("property: expiry is after now for every preset and pin is within bound", () => {
+  /** Validates: Requirements 1.1, 12.1 (the pin is exactly the confirmed point, at any distance) */
+  it("property: expiry is after now for every preset and the pin is the submitted point", () => {
     fc.assert(
       fc.property(
         fc.constantFrom(...EXPIRY_PRESETS),
         fc.record({ lat: fc.double({ min: -80, max: 80, noNaN: true }), lng: fc.double({ min: -179, max: 179, noNaN: true }) }),
-        fc.record({ lat: fc.double({ min: -80, max: 80, noNaN: true }), lng: fc.double({ min: -179, max: 179, noNaN: true }) }),
-        (expiry, r, d) => {
-          const res = validatePostingInput({ ...base(), expiry, real: r, desired: d }, now);
+        (expiry, r) => {
+          const res = validatePostingInput({ ...base(), expiry, location: loc(r) }, now);
           if (!res.ok) return false;
-          return (
-            res.value.expiresAt.getTime() > now.getTime() &&
-            haversineMeters(r, res.value.pin) <= MAX_NUDGE_METERS + 1
-          );
+          return res.value.expiresAt.getTime() > now.getTime() && res.value.pin.lat === r.lat && res.value.pin.lng === r.lng;
         },
       ),
     );

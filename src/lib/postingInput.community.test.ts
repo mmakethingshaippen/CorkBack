@@ -12,7 +12,7 @@ const expiresAt = "2026-12-10T00:00:00Z";
 const baseCtx: EditContext = { expiresAt, timeZone: TZ, lat: real.lat, lng: real.lng };
 
 const pub = (slug: string, o: Record<string, unknown>) =>
-  validatePostingInput({ title: "T", categorySlug: slug, expiry: "1w", real, ...o }, now);
+  validatePostingInput({ title: "T", categorySlug: slug, expiry: "1w", location: { ...real, source: "pin", confirmed: true, precision: "exact" }, ...o }, now);
 const edit = (slug: string, o: Record<string, unknown>, ctx: EditContext = baseCtx) =>
   validatePostingEdit({ title: "T", categorySlug: slug, ...o }, ctx, now);
 

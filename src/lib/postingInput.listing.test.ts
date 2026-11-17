@@ -26,8 +26,21 @@ const addDays = (iso: string, n: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+const locOf = (p: { lat: number; lng: number }) => ({ ...p, source: "pin", confirmed: true, precision: "exact" });
+/** Maps the location block back to the retired real/desired fields for the frozen baseline. */
+const toBaseline = (input: Record<string, unknown>) => {
+  const { location, ...rest } = input;
+  const p = location as { lat: number; lng: number };
+  return { ...rest, real: { lat: p.lat, lng: p.lng }, desired: null };
+};
+/** The new result carries `precision`, which the baseline has no notion of. */
+const withoutPrecision = (r: ReturnType<typeof validatePostingInput>) => {
+  if (!r.ok) return r;
+  const { precision: _p, ...value } = r.value;
+  return { ok: true as const, value };
+};
 const publish = (slug: string, place: keyof typeof PLACES, now: Date, o: Record<string, unknown>) =>
-  validatePostingInput({ title: "T", categorySlug: slug, expiry: "1w", real: PLACES[place], ...o }, now);
+  validatePostingInput({ title: "T", categorySlug: slug, expiry: "1w", location: locOf(PLACES[place]), ...o }, now);
 const ctxFor = (place: keyof typeof PLACES, now: Date): EditContext => ({
   expiresAt: new Date(now.getTime() + 7 * 864e5).toISOString(),
   timeZone: timeZoneForPin(PLACES[place].lat, PLACES[place].lng),
@@ -143,8 +156,8 @@ describe("Property 12: Event categories are unchanged", () => {
         { weight: 9, arbitrary: fc.constantFrom<unknown>(...EXPIRY_PRESETS) },
         { weight: 1, arbitrary: fc.constantFrom<unknown>("2d", undefined) },
       ),
-      real: fc.constantFrom<unknown>(...Object.values(PLACES), undefined, { lat: NaN, lng: 0 }),
-      desired: fc.constantFrom<unknown>(null, undefined, { lat: 38.5, lng: -122.27 }, { lat: 999, lng: 0 }),
+      // Always a valid confirmed location: the location error messages are new by design.
+      location: fc.constantFrom<unknown>(...Object.values(PLACES).map(locOf)),
       eventDate: dateArb,
       eventTime: timeArb,
       endDate: dateArb,
@@ -154,12 +167,12 @@ describe("Property 12: Event categories are unchanged", () => {
       dateNeedsConfirmation: fc.constantFrom<unknown>(true, false, undefined),
       dateConfirmed: fc.constantFrom<unknown>(true, false, undefined),
     },
-    { requiredKeys: [] },
+    { requiredKeys: ["location"] },
   );
   it("**Validates: Requirements 8.7** publish matches the pre-feature validator, outcome and message", () => {
     fc.assert(
       fc.property(inputArb, nowArb, (input, now) => {
-        expect(validatePostingInput(input, now)).toEqual(baselinePublish(input, now));
+        expect(withoutPrecision(validatePostingInput(input, now))).toEqual(baselinePublish(toBaseline(input), now));
       }),
       { numRuns: 500 },
     );
@@ -169,7 +182,18 @@ describe("Property 12: Event categories are unchanged", () => {
     fc.assert(
       fc.property(inputArb, nowArb, placeArb, fc.constantFrom<string | null>(null, "2026-01-01"), (input, now, place, stored) => {
         const ctx: EditContext = { ...ctxFor(place, now), eventDate: stored, endDate: null, endTime: null };
-        expect(validatePostingEdit(input, ctx, now)).toEqual(baselineEdit(input, ctx, now));
+        // The generated input may carry a publish-style location; the baseline never saw one.
+        const { location: _loc, ...noLoc } = input as Record<string, unknown>;
+        input = noLoc as typeof input;
+        const got = validatePostingEdit(input, ctx, now);
+        let stripped: unknown = got;
+        if (got.ok) {
+          // Bodies here carry no location, so the edit leaves the stored one untouched.
+          expect(got.value.location).toBeNull();
+          const { location: _l, ...value } = got.value;
+          stripped = { ok: true as const, value };
+        }
+        expect(stripped).toEqual(baselineEdit(input, ctx, now));
       }),
       { numRuns: 500 },
     );
@@ -208,13 +232,13 @@ describe("Property 14: Publish and edit validate alike", () => {
           if (dl && typeof dl === "object" && !Array.isArray(dl) && "off" in dl) {
             input.deadline = addDays(localDate(now, tz), (dl as { off: number }).off);
           }
-          const p = validatePostingInput({ ...input, expiry: "1w", real: PLACES[place] }, now);
+          const p = validatePostingInput({ ...input, expiry: "1w", location: locOf(PLACES[place]) }, now);
           const e = validatePostingEdit(input, ctxFor(place, now), now);
           expect(p.ok).toBe(e.ok);
           if (!p.ok && !e.ok) expect(p.error).toBe(e.error);
           if (p.ok && e.ok) {
             const { title, body, categorySlug, rsvpUrl, eventDate, eventTime, endDate, endTime, placeLabel } = p.value;
-            expect(e.value).toEqual({ title, body, categorySlug, rsvpUrl, eventDate, eventTime, endDate, endTime, placeLabel });
+            expect(e.value).toEqual({ title, body, categorySlug, rsvpUrl, eventDate, eventTime, endDate, endTime, placeLabel, location: null });
           }
         },
       ),

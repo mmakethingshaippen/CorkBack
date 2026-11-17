@@ -46,11 +46,9 @@ export function computeExpiresAt(createdAt: Date, preset: ExpiryPreset): Date {
 // in ./lifecycle.ts: `postingTakedown` / `isPostingActive`.
 
 // ---------------------------------------------------------------------------
-// Pin nudge (LOCKED): a posting pins near the poster's real location. A short
-// nudge to the exact board/venue is allowed, but the pin must STAY NEAR the
-// real location. We cap the nudge at a small radius so the pin can never drift.
+// Geo helpers: distance and destination point. The pin is whatever the poster confirms
+// (see postingLocation.ts); there is no distance limit from the poster.
 // ---------------------------------------------------------------------------
-export const MAX_NUDGE_METERS = 150;
 const EARTH_RADIUS_M = 6_371_000;
 
 const toRad = (d: number) => (d * Math.PI) / 180;
@@ -71,23 +69,8 @@ export function haversineMeters(
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-/** Initial bearing (radians) from point a to point b. */
-function bearingRad(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x =
-    Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  return Math.atan2(y, x);
-}
-
 /** Destination point given a start, a distance in meters, and a bearing (rad). */
-function destinationPoint(
+export function destinationPoint(
   start: { lat: number; lng: number },
   meters: number,
   bearing: number,
@@ -108,23 +91,6 @@ function destinationPoint(
   // Normalize longitude to [-180, 180].
   const lngDeg = ((toDeg(lng2) + 540) % 360) - 180;
   return { lat: toDeg(lat2), lng: lngDeg };
-}
-
-/**
- * Clamp a desired pin to within MAX_NUDGE_METERS of the poster's real location.
- * If the requested nudge is within bounds it is kept; otherwise it is pulled
- * back onto the boundary circle along the true geodesic bearing. Using a proper
- * geographic offset (not naive lat/lng interpolation) keeps this correct near
- * the poles and the antimeridian. Guarantees the pin stays near the real spot.
- */
-export function clampPinNudge(
-  real: { lat: number; lng: number },
-  desired: { lat: number; lng: number },
-): { lat: number; lng: number } {
-  const dist = haversineMeters(real, desired);
-  if (dist <= MAX_NUDGE_METERS) return desired;
-  const bearing = bearingRad(real, desired);
-  return destinationPoint(real, MAX_NUDGE_METERS, bearing);
 }
 
 // ---------------------------------------------------------------------------

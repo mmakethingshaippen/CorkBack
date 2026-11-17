@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createGeocoderStore } from "@/lib/geocoderStore";
 
 /**
  * Expiry sweep (Vercel cron). READ-ONLY: it no longer soft-deletes anything.
@@ -11,7 +12,8 @@ import { createServerClient } from "@supabase/ssr";
  *
  * The job keeps its CRON_SECRET guard and configuration check, and reports how
  * many non-deleted postings are past expiry or past their event date (the rows
- * it used to delete), for monitoring.
+ * it used to delete), for monitoring. After that it purges expired geocoder cache
+ * rows; a purge failure is logged by code and never fails the sweep.
  */
 export const runtime = "nodejs";
 
@@ -40,5 +42,22 @@ export async function GET(req: Request) {
     .or(`expires_at.lte.${nowIso},event_date.lt.${today}`);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, sweptAt: nowIso, deleted: 0, pastTakedown: count ?? 0 });
+  let cachePurged: number | null = null;
+  let cachePurgeFailed = false;
+  try {
+    cachePurged = await createGeocoderStore(supabase).purgeExpired();
+  } catch (e) {
+    cachePurgeFailed = true;
+    // The store message carries only the database error code, no secrets.
+    console.error("expiry sweep: geocoder cache purge failed:", e instanceof Error ? e.message : "unknown");
+  }
+
+  return NextResponse.json({
+    ok: true,
+    sweptAt: nowIso,
+    deleted: 0,
+    pastTakedown: count ?? 0,
+    cachePurged,
+    ...(cachePurgeFailed ? { cachePurgeFailed: true } : {}),
+  });
 }

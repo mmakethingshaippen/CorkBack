@@ -79,9 +79,9 @@ export function ScanCapture() {
       </button>
 
       <div className="rounded-card border border-board bg-board/20 p-4 text-sm text-ink/70">
-        <p className="font-bold text-ink">Your permission, your pin</p>
+        <p className="font-bold text-ink">Your flyer, your place</p>
         <p className="mt-1">
-          Location is requested before publishing, so the flyer pins where you are — not at a venue read from the paper.
+          You choose where this takes place on the map. We do not read your location when you scan.
           Nothing goes public until you select Publish.
         </p>
       </div>

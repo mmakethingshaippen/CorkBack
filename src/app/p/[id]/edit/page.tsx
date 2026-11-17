@@ -3,7 +3,10 @@ import Link from "next/link";
 import { TopBar } from "@/components/ui/TopBar";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { CorkBand } from "@/components/ui/CorkBand";
-import { getPosting } from "@/lib/postings";
+import { getLocationPrecision, getPosting } from "@/lib/postings";
+import { createClient } from "@/lib/supabase/server";
+import { isUuid } from "@/lib/reactionState";
+import type { StoredPrecision } from "@/lib/postingLocation";
 import { getViewer } from "@/lib/auth";
 import { isPostingActive, postingTakedown } from "@/lib/lifecycle";
 import { EditPostingForm } from "./EditPostingForm";
@@ -20,6 +23,10 @@ export default async function EditPostingPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const [posting, viewer] = await Promise.all([getPosting(id), getViewer()]);
   if (!posting || !viewer || viewer.username !== posting.authorUsername) notFound();
+  // Separate read; failure logs the code and reads as "unreviewed". Seed postings have no column.
+  const precision: StoredPrecision = isUuid(posting.id) && isPostingActive(posting)
+    ? await getLocationPrecision(await createClient(), posting.id)
+    : "unreviewed";
   if (!isPostingActive(posting)) {
     return (
       <main className="min-h-screen pb-24">
@@ -52,7 +59,7 @@ export default async function EditPostingPage({ params }: { params: Promise<{ id
             lng: posting.lng,
             takedownAt: postingTakedown(posting).toISOString(),
           }}
-          pinNote="The pin stays where it was placed when you published. Your exact location is never shown publicly."
+          pin={{ lat: posting.lat, lng: posting.lng, precision }}
           initial={{
             title: posting.title,
             body: posting.body,

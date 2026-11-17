@@ -4,7 +4,7 @@ import { validatePostingEdit, validatePostingInput, type EditContext } from "./p
 const now = new Date("2026-11-10T20:00:00Z");
 const real = { lat: 37.87, lng: -122.27 }; // America/Los_Angeles
 const pub = (o: Record<string, unknown>) =>
-  validatePostingInput({ title: "T", categorySlug: "jobs", expiry: "1w", real, ...o }, now);
+  validatePostingInput({ title: "T", categorySlug: "jobs", expiry: "1w", location: { ...real, source: "pin", confirmed: true, precision: "exact" }, ...o }, now);
 const ctx: EditContext = { expiresAt: "2026-12-10T00:00:00Z", timeZone: "America/Los_Angeles", lat: real.lat, lng: real.lng };
 const edit = (o: Record<string, unknown>, c = ctx) => validatePostingEdit({ title: "T", categorySlug: "jobs", ...o }, c, now);
 

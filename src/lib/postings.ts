@@ -164,6 +164,24 @@ export async function getPosting(id: string): Promise<Posting | null> {
 }
 
 /**
+ * How precise a posting's pin is. A separate read, kept out of POSTING_COLUMNS so the shared map
+ * query is unaffected. If the read fails (for example the column is not there yet), the error code
+ * is logged and the posting reads as "unreviewed" so the page still renders.
+ */
+export async function getLocationPrecision(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<"exact" | "approximate" | "unreviewed"> {
+  const { data, error } = await supabase.from("postings").select("location_precision").eq("id", id).maybeSingle();
+  if (error) {
+    console.error("[CorkBack] getLocationPrecision failed:", { code: error.code });
+    return "unreviewed";
+  }
+  const value = (data as { location_precision?: unknown } | null)?.location_precision;
+  return value === "exact" || value === "approximate" ? value : "unreviewed";
+}
+
+/**
  * Candidate rows for the Following feed: non-deleted, unexpired postings by the
  * given authors, paired with their author id. The caller applies the shared
  * lifecycle rule and ordering (buildFollowingFeed). Counts are attached.

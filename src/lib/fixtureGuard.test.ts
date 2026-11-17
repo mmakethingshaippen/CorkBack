@@ -33,4 +33,32 @@ describe("fixture data guard", () => {
       .map((f) => relative(SRC, f));
     expect(offenders).toEqual([]);
   });
+
+  it("location fixtures exist, use fx- ids, and are imported only by tests", () => {
+    const fixtureFile = join(SRC, "lib", "__fixtures__", "location.ts");
+    const text = readFileSync(fixtureFile, "utf8");
+    const ids = [...text.matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.filter((id) => !id.startsWith("fx-"))).toEqual([]);
+
+    const importers = walk(SRC)
+      .filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f))
+      .filter((f) => f !== fixtureFile)
+      .filter((f) => /__fixtures__\/location/.test(readFileSync(f, "utf8")))
+      .filter((f) => !/\.test\.(ts|tsx)$/.test(f))
+      .map((f) => relative(SRC, f));
+    expect(importers).toEqual([]);
+  });
+
+  it("legacyClamp is imported only by tests and __testing__ code", () => {
+    const self = join(SRC, "lib", "fixtureGuard.test.ts");
+    const offenders = walk(SRC)
+      .filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f))
+      .filter((f) => f !== self)
+      .filter((f) => !/\.test\.(ts|tsx)$/.test(f))
+      .filter((f) => !relative(SRC, f).split(sep).join("/").startsWith("lib/__testing__/"))
+      .filter((f) => /legacyClamp/.test(readFileSync(f, "utf8")))
+      .map((f) => relative(SRC, f));
+    expect(offenders).toEqual([]);
+  });
 });

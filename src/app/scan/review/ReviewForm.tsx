@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Field, TextAreaField } from "@/components/ui/Field";
 import { CategoryChip } from "@/components/ui/CategoryChip";
@@ -8,6 +8,10 @@ import { CATEGORIES } from "@/lib/categories";
 import { EXPIRY_PRESETS, computeExpiresAt, type ExpiryPreset } from "@/lib/domain";
 import { isIsoDate, timeZoneForPin } from "@/lib/lifecycle";
 import { fieldSpec } from "@/lib/postingKinds";
+import { LocationPicker } from "@/components/map/LocationPicker";
+import { canPublishWithLeaks, findAddressLeaks, type AddressLeak } from "@/lib/addressLeaks";
+import { parseStoredExtraction, type AddressCandidate } from "@/lib/addressCandidates";
+import { emptyDraft, locationReducer, publicPin, publishableLocation } from "@/lib/postingLocation";
 import { TAKEDOWN_ZONE_NOTE, takedownLine } from "@/lib/takedownLine";
 import type { ExtractedFlyer } from "@/lib/types";
 
@@ -21,9 +25,22 @@ const PRESET_LABEL: Record<ExpiryPreset, string> = {
 
 /**
  * Review step: every extracted field is editable before anything is published.
- * Category chips, expiry presets, optional RSVP link, and a current-pin block.
+ * Category chips, expiry presets, optional RSVP link, and the location picker.
+ * Nothing here reads the device location. The pin is whatever the poster confirms.
  * The one dark-red main action is "Publish to the map".
  */
+const LEAK_FIELD: Record<AddressLeak["field"], string> = {
+  title: "Title",
+  body: "Details",
+  placeLabel: "Place label",
+};
+const LEAK_KIND: Record<AddressLeak["reason"], string> = {
+  candidate: "street address",
+  pattern: "street address",
+  phone: "phone number",
+  email: "email address",
+};
+
 export function ReviewForm() {
   const router = useRouter();
   const [loaded, setLoaded] = useState(false);
@@ -41,27 +58,36 @@ export function ReviewForm() {
   // poster must confirm the full date before publishing. Never assume silently.
   const [yearUncertain, setYearUncertain] = useState(false);
   const [dateConfirmed, setDateConfirmed] = useState(false);
-  const [placeLabel, setPlaceLabel] = useState("");
+  const [draft, dispatch] = useReducer(locationReducer, undefined, emptyDraft);
+  const [candidates, setCandidates] = useState<AddressCandidate[]>([]);
+  const [leaksAck, setLeaksAck] = useState(false);
+  const [scanUnreadable, setScanUnreadable] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const [category, setCategory] = useState<string>("community");
   const [rsvpUrl, setRsvpUrl] = useState("");
   const [expiry, setExpiry] = useState<ExpiryPreset>("1w");
-  const [locationAllowed, setLocationAllowed] = useState(false);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("corkback.extracted");
     if (raw) {
-      const e = JSON.parse(raw) as ExtractedFlyer;
+      const e: ExtractedFlyer | null = parseStoredExtraction(raw);
+      if (!e) {
+        setScanUnreadable(true);
+      } else {
       setTitle(e.title ?? "");
       setBody(e.body ?? "");
       setEventDate(e.eventDate ?? "");
       setDeadline(isIsoDate(e.eventDate) ? e.eventDate : "");
       setYearUncertain(Boolean(e.eventDate) && e.eventDateYearPrinted !== true);
       setEventTime(e.eventTime ?? "");
-      setPlaceLabel(e.placeLabel ?? "");
-      setCategory(e.categorySlug ?? "community");
+      setCategory(e.categorySlug || "community");
       setRsvpUrl(e.rsvpUrl ?? "");
+      const found = e.addresses ?? [];
+      setCandidates(found);
+      dispatch({ type: "extracted", candidates: found });
+      if (e.placeLabel) dispatch({ type: "label_typed", text: e.placeLabel });
+      }
     }
     setNow(new Date());
     setLoaded(true);
@@ -73,7 +99,24 @@ export function ReviewForm() {
   // The date the poster must confirm: the Deadline for listings, else the event date.
   const activeDate = isListing ? deadline : eventDate;
   const needsDateConfirmation = yearUncertain && Boolean(activeDate);
-  const pinZone = useMemo(() => (coords ? timeZoneForPin(coords.lat, coords.lng) : null), [coords]);
+  const pin = publicPin(draft);
+  const pinLat = pin?.lat;
+  const pinLng = pin?.lng;
+  const pinZone = useMemo(
+    () => (pinLat !== undefined && pinLng !== undefined ? timeZoneForPin(pinLat, pinLng) : null),
+    [pinLat, pinLng],
+  );
+  const placeLabel = draft.label.text;
+  const leaks: AddressLeak[] = useMemo(
+    () =>
+      findAddressLeaks(
+        { title, body, placeLabel },
+        candidates,
+        draft.confirmed?.match ? { addressLine: draft.confirmed.match.addressLine } : null,
+        draft.privateHome ? "approximate" : "exact",
+      ),
+    [title, body, placeLabel, candidates, draft.confirmed, draft.privateHome],
+  );
   const takedown = useMemo(() => {
     if (!now) return null;
     return takedownLine({
@@ -86,20 +129,6 @@ export function ReviewForm() {
     });
   }, [now, category, expiry, isListing, eventDate, endDate, endTime, deadline, pinZone]);
 
-  function requestLocation() {
-    if (!("geolocation" in navigator)) {
-      setStatus("Location is not available in this browser.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocationAllowed(true);
-      },
-      () => setStatus("Location permission is needed to pin your flyer."),
-    );
-  }
-
   async function publish(e: React.FormEvent) {
     e.preventDefault();
     if (needsDateConfirmation && !dateConfirmed) {
@@ -107,8 +136,15 @@ export function ReviewForm() {
       document.getElementById("dateConfirmed")?.focus();
       return;
     }
-    if (!coords) {
-      setStatus("Allow your current location to place the pin before publishing.");
+    const location = publishableLocation(draft);
+    if (!location) {
+      setStatus("Choose where this takes place on the map before publishing.");
+      pickerRef.current?.focus();
+      return;
+    }
+    if (!canPublishWithLeaks(leaks, leaksAck)) {
+      setStatus("Check the box to confirm your posting does not show a home or personal address.");
+      document.getElementById("leaksAck")?.focus();
       return;
     }
     // Only the current kind's fields are sent; hidden values stay in state.
@@ -134,8 +170,7 @@ export function ReviewForm() {
         placeLabel,
         rsvpUrl: rsvpUrl || null,
         expiry,
-        real: coords,
-        desired: coords, // nudge handled server-side; no manual drag in Stage 1
+        location,
       }),
     });
     const resp = await res.json();
@@ -149,6 +184,7 @@ export function ReviewForm() {
 
   if (!loaded) return null;
 
+
   const fullDateLabel = activeDate
     ? new Date(`${activeDate}T00:00:00Z`).toLocaleDateString("en-US", {
         timeZone: "UTC",
@@ -161,6 +197,11 @@ export function ReviewForm() {
 
   return (
     <form onSubmit={publish} className="space-y-5">
+      {scanUnreadable ? (
+        <p className="rounded-card border-2 border-deep-navy bg-white p-3 text-sm text-ink">
+          We could not read the saved scan. Enter the details below.
+        </p>
+      ) : null}
       <Field label="Title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} />
 
       {isListing ? (
@@ -251,14 +292,6 @@ export function ReviewForm() {
         </>
       )}
 
-      <Field
-        label={isListing ? "Place (optional)" : "Event place"}
-        name="placeLabel"
-        value={placeLabel}
-        onChange={(e) => setPlaceLabel(e.target.value)}
-        hint="This is the text on the flyer, not the map pin."
-      />
-
       <TextAreaField label="Details" name="body" rows={4} value={body} onChange={(e) => setBody(e.target.value)} />
 
       <div>
@@ -296,22 +329,46 @@ export function ReviewForm() {
         </p>
       </div>
 
-      <div className="rounded-card border border-board bg-board/20 p-4 text-sm">
-        <p className="font-bold text-ink">
-          Your current pin · {locationAllowed ? "Location allowed" : "Location needed"}
-        </p>
-        <p className="mt-1 text-ink/70">
-          Your flyer pins near where you are, not at a venue read from the paper. Your exact location is never shown publicly.
-        </p>
-        {!locationAllowed ? (
-          <button type="button" onClick={requestLocation} className="mt-2 rounded-control border border-deep-navy px-4 py-2 font-bold text-deep-navy">
-            Use my current location
-          </button>
-        ) : (
-          <p className="mt-2 text-ink">Pin set near your current location.</p>
-        )}
+      <div ref={pickerRef} tabIndex={-1} className="outline-none">
+        <LocationPicker
+          categorySlug={category}
+          hasEventDate={hasEventDate}
+          candidates={candidates}
+          draft={draft}
+          dispatch={dispatch}
+          onLabelChange={(text) => dispatch({ type: "label_typed", text })}
+        />
       </div>
 
+      <p className="text-sm text-ink/70">The flyer photo is not published. Only the text you see here goes public.</p>
+
+      {leaks.length > 0 ? (
+        <div id="leaks-warning" className="rounded-card border-2 border-dark-red bg-white p-4 text-sm">
+          <p className="font-bold text-ink">Check for personal details</p>
+          <p className="mt-1 text-ink/80">
+            Your posting includes a street address, phone number or email address that may be personal.
+            You can keep public venue or organizer contact details. Remove anything that belongs to a
+            home or a private person.
+          </p>
+          <ul className="mt-2 list-disc pl-5 text-ink">
+            {leaks.map((l, i) => (
+              <li key={`${l.field}-${l.reason}-${i}`}>
+                {LEAK_FIELD[l.field]}: {LEAK_KIND[l.reason]} <span className="font-bold">{l.text}</span>
+              </li>
+            ))}
+          </ul>
+          <label htmlFor="leaksAck" className="mt-2 flex items-start gap-2 text-ink">
+            <input
+              id="leaksAck"
+              type="checkbox"
+              checked={leaksAck}
+              onChange={(e) => setLeaksAck(e.target.checked)}
+              className="mt-1 h-4 w-4 accent-deep-navy"
+            />
+            <span>I checked this. Anything personal is removed. Public venue or organizer details can stay.</span>
+          </label>
+        </div>
+      ) : null}
       {/* One dark-red main action per screen. */}
       <button type="submit" className="w-full rounded-control bg-dark-red px-5 py-3 font-bold text-white">
         Publish to the map

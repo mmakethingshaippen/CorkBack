@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
 // Records every query-builder call so the test can prove the job never writes.
 const calls: string[] = [];
+let purge: { data: unknown; error: { code?: string } | null } = { data: 0, error: null };
 let result: { count: number | null; error: { message: string } | null } = { count: 0, error: null };
 
 vi.mock("@supabase/ssr", () => ({
@@ -15,6 +18,10 @@ vi.mock("@supabase/ssr", () => ({
     }
     builder.then = (resolve: (v: unknown) => unknown) => resolve(result);
     return {
+      rpc: (name: string) => {
+        calls.push(`rpc(${name})`);
+        return Promise.resolve(purge);
+      },
       from: (table: string) => {
         calls.push(`from(${table})`);
         return builder;
@@ -33,6 +40,7 @@ describe("expiry cron (read-only)", () => {
   beforeEach(() => {
     calls.length = 0;
     result = { count: 0, error: null };
+    purge = { data: 0, error: null };
     process.env.CRON_SECRET = "test-cron-secret";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-key";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.invalid";
@@ -72,5 +80,26 @@ describe("expiry cron (read-only)", () => {
   it("reports a database error as 500", async () => {
     result = { count: null, error: { message: "boom" } };
     expect((await GET(req("Bearer test-cron-secret"))).status).toBe(500);
+  });
+
+  it("purges the geocoder cache after the sweep and reports the count", async () => {
+    purge = { data: 4, error: null };
+    const body = await (await GET(req("Bearer test-cron-secret"))).json();
+    expect(body).toMatchObject({ ok: true, cachePurged: 4 });
+    expect(body.cachePurgeFailed).toBeUndefined();
+    expect(calls.indexOf("rpc(cb_geocoder_purge_cache)")).toBeGreaterThan(calls.indexOf("from(postings)"));
+  });
+
+  it("a purge failure is logged by code and does not fail the sweep", async () => {
+    result = { count: 3, error: null };
+    purge = { data: null, error: { code: "42883" } };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET(req("Bearer test-cron-secret"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, pastTakedown: 3, cachePurged: null, cachePurgeFailed: true });
+    const logged = spy.mock.calls.flat().join(" ");
+    expect(logged).toContain("42883");
+    expect(logged).not.toContain("test-service-key");
+    spy.mockRestore();
   });
 });

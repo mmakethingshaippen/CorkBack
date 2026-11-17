@@ -64,7 +64,7 @@ describe("flyer scan", () => {
   it("sends JPEG bytes to the Gemini endpoint and returns title, date, time, and place", async () => {
     fetchMock.mockResolvedValueOnce(generated());
     const result = await scan();
-    expect(result).toEqual({ status: 200, body: { extracted: flyer } });
+    expect(result).toEqual({ status: 200, body: { extracted: { ...flyer, addresses: [] } } });
     const [url, options] = fetchMock.mock.calls[0];
     expect(String(url)).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent");
     const payload = JSON.parse(options!.body as string);
@@ -179,6 +179,81 @@ describe("flyer scan", () => {
     const { body } = await scan();
     expect(body.extracted.rsvpUrl).toBe("https://example.com/rsvp");
     expect(body.extracted.categorySlug).toBe("community");
+  });
+
+  describe("address candidates", () => {
+    const venue = { text: "120 Park Ave, Springfield", kind: "venue" };
+    const contact = { text: "55 Elm St, Springfield", kind: "contact" };
+    const ret = { text: "PO Box 9, Springfield", kind: "return" };
+
+    it("returns a single home-address flyer as a candidate with its kind", async () => {
+      const home = { text: "14 Oak Lane, Springfield", kind: "contact" };
+      fetchMock.mockResolvedValueOnce(generated(JSON.stringify({ ...flyer, addresses: [home] })));
+      const { status, body } = await scan();
+      expect(status).toBe(200);
+      expect(body.extracted.addresses).toEqual([home]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns three addresses in order with one fetch call", async () => {
+      fetchMock.mockResolvedValueOnce(generated(JSON.stringify({ ...flyer, addresses: [venue, contact, ret] })));
+      const { body } = await scan();
+      expect(body.extracted.addresses).toEqual([venue, contact, ret]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns [] when the flyer has no address or the model omits the field", async () => {
+      fetchMock.mockResolvedValueOnce(generated(JSON.stringify({ ...flyer, addresses: [] })));
+      expect((await scan()).body.extracted.addresses).toEqual([]);
+      fetchMock.mockResolvedValueOnce(generated(JSON.stringify(flyer)));
+      expect((await scan()).body.extracted.addresses).toEqual([]);
+    });
+
+    it.each([
+      ["a string", "120 Park Ave"],
+      ["an object", { text: "120 Park Ave" }],
+      ["a number", 7],
+      ["null", null],
+    ])("returns [] when addresses is %s", async (_name, value) => {
+      fetchMock.mockResolvedValueOnce(generated(JSON.stringify({ ...flyer, addresses: value })));
+      const { status, body } = await scan();
+      expect(status).toBe(200);
+      expect(body.extracted.addresses).toEqual([]);
+    });
+
+    it("drops malformed entries and defaults an unknown kind", async () => {
+      const addresses = [42, null, { text: 5 }, { text: "  " }, { text: "9 Main St", kind: "bogus" }, venue];
+      fetchMock.mockResolvedValueOnce(generated(JSON.stringify({ ...flyer, addresses })));
+      const { body } = await scan();
+      expect(body.extracted.addresses).toEqual([{ text: "9 Main St", kind: "unknown" }, venue]);
+    });
+
+    it("never returns coordinates, even if the model supplies them", async () => {
+      const addresses = [{ ...venue, lat: 40.1, lng: -75.2, latitude: 40.1, longitude: -75.2 }];
+      fetchMock.mockResolvedValueOnce(
+        generated(JSON.stringify({ ...flyer, lat: 40.1, lng: -75.2, addresses })),
+      );
+      const { body } = await scan();
+      expect(body.extracted.addresses).toEqual([venue]);
+      expect(Object.keys(body.extracted)).not.toEqual(expect.arrayContaining(["lat"]));
+      expect(JSON.stringify(body)).not.toMatch(/"(lat|lng|latitude|longitude)"/);
+    });
+
+    it("asks Gemini for addresses and names the five kinds", async () => {
+      fetchMock.mockResolvedValueOnce(generated());
+      await scan();
+      const payload = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+      const prompt: string = payload.contents[0].parts[0].text;
+      expect(prompt).toContain("addresses");
+      for (const kind of ["venue", "contact", "return", "other", "unknown"]) expect(prompt).toContain(`"${kind}"`);
+    });
+
+    it("returns no addresses from the plain key: value fallback", async () => {
+      fetchMock.mockResolvedValueOnce(generated("title: Fair\nplace: 1 Main St"));
+      const { status, body } = await scan();
+      expect(status).toBe(200);
+      expect(body.extracted.addresses).toEqual([]);
+    });
   });
 
   it("keeps the missing-key error readable without making an API call", async () => {

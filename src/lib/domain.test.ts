@@ -4,9 +4,6 @@ import {
   isValidUsername,
   USERNAME_RE,
   computeExpiresAt,
-  clampPinNudge,
-  haversineMeters,
-  MAX_NUDGE_METERS,
   cardTilt,
   TILT_MIN,
   TILT_MAX,
@@ -85,33 +82,6 @@ describe("expiry rule (property)", () => {
         },
       ),
     );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Property 3 (LOCKED): a pin always stays near the poster location. After
-// clamping, the pin is within MAX_NUDGE_METERS of the real location.
-// ---------------------------------------------------------------------------
-describe("pin nudge rule (property)", () => {
-  const coord = fc.record({
-    lat: fc.double({ min: -60, max: 60, noNaN: true }),
-    lng: fc.double({ min: -179, max: 179, noNaN: true }),
-  });
-
-  it("clamped pin is always within MAX_NUDGE_METERS of the real location", () => {
-    fc.assert(
-      fc.property(coord, coord, (real, desired) => {
-        const pinned = clampPinNudge(real, desired);
-        // allow 1m slack for float/linear-interp error at this small scale
-        return haversineMeters(real, pinned) <= MAX_NUDGE_METERS + 1;
-      }),
-    );
-  });
-
-  it("a desired pin already within bounds is kept unchanged", () => {
-    const real = { lat: 51.5416, lng: -0.1426 }; // North London
-    const pinned = clampPinNudge(real, real);
-    expect(pinned).toEqual(real);
   });
 });
 

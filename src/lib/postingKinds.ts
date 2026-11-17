@@ -107,6 +107,30 @@ export function fieldSpec(slug: string, opts?: { hasEventDate?: boolean }): Fiel
   };
 }
 
+export interface LocationLabels {
+  /** Label on the posting form. */
+  field: string;
+  /** Label in front of the place on the posting detail page. */
+  detail: string;
+  hint: string;
+}
+
+const LOCATION_HINT = "This text is shown to visitors. The pin shows the same place on the map.";
+
+/** Category-specific wording for the place. Unknown slugs are events. */
+export function locationLabels(slug: string, opts: { hasEventDate: boolean }): LocationLabels {
+  const hint = LOCATION_HINT;
+  if (slug === "lost-found") {
+    return { field: "Where it was lost or found", detail: "Lost or found near", hint };
+  }
+  const kind = categoryKind(slug);
+  if (kind === "listing") return { field: "Listing location", detail: "Listing location", hint };
+  if (kind === "event-optional" && !opts.hasEventDate) {
+    return { field: "Location", detail: "Location", hint };
+  }
+  return { field: "Event venue", detail: "Event venue", hint };
+}
+
 export type TakedownReason = "expiry" | "deadline" | "event_end";
 export interface TakedownInfo {
   at: Date;

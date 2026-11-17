@@ -8,12 +8,15 @@ import { categoryKind } from "@/lib/postingKinds";
 /**
  * Owner edit and delete of a posting.
  *
- * PATCH  — change content only: title, details, category, RSVP link, event
- *   date/time, end date/time, place label. The pin, expiry, flyer, zone, author,
- *   created_at, deletion and moderation state are NOT updatable: the database
- *   grants UPDATE on exactly those content columns, and the update policy only
- *   allows the author on an active, visible posting. This route adds readable
- *   errors and the same validation as publishing.
+ * PATCH  — content update first: title, details, category, RSVP link, event
+ *   date/time, end date/time, place label. The content update never includes
+ *   lat, lng, time_zone or location_precision; the database grants UPDATE on
+ *   exactly the content columns, and the update policy only allows the author
+ *   on an active, visible posting. Then, only when the body has a `location`
+ *   block, the pin is written by rpc cb_update_posting_location (one atomic
+ *   statement). If that fails the previous pin stays and the answer is 500
+ *   `location_failed`, so the client can offer a Retry via PATCH .../location.
+ *   Expiry, flyer, author, created_at, deletion and moderation state are NOT updatable.
  * DELETE — soft delete through public.delete_own_posting (author only; works on
  *   active, ended and moderated postings; idempotent).
  */
@@ -96,7 +99,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   // Zero rows: the database no longer considers it an active, visible posting (ended or moderated in the meantime).
   if (!updated || updated.length === 0) return fail(409, "unavailable", "This posting is no longer editable. It may have ended or been removed.");
-  return NextResponse.json({ id });
+  if (!e.location) return NextResponse.json({ id });
+
+  // Second step: the new pin, in one atomic statement inside the function. A failure leaves the previous pin as stored.
+  const { error: locError } = await supabase.rpc("cb_update_posting_location", {
+    p_posting_id: id,
+    p_lat: e.location.pin.lat,
+    p_lng: e.location.pin.lng,
+    p_time_zone: e.location.timeZone,
+    p_precision: e.location.precision,
+  });
+  if (locError) {
+    console.error("[CorkBack] posting location update failed:", { code: locError.code, message: locError.message });
+    if (locError.code === "CB404" || locError.code === "CB409") return fail(409, "unavailable", "This posting is no longer editable. It may have ended or been removed.");
+    if (locError.code === "22023") return fail(400, "invalid", "That location isn't valid.");
+    return fail(500, "location_failed", "Your other changes were saved, but the location was not.");
+  }
+  return NextResponse.json({ id, location: { lat: e.location.pin.lat, lng: e.location.pin.lng, precision: e.location.precision, timeZone: e.location.timeZone } });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {

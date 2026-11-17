@@ -1,5 +1,5 @@
 import { CATEGORIES } from "./categories";
-import { EXPIRY_PRESETS, clampPinNudge, computeExpiresAt, type ExpiryPreset } from "./domain";
+import { EXPIRY_PRESETS, computeExpiresAt, type ExpiryPreset } from "./domain";
 import { FALLBACK_TIME_ZONE, eventEnd, isClockTime, isIsoDate, localDate, timeZoneForPin } from "./lifecycle";
 import { categoryKind } from "./postingKinds";
 
@@ -60,8 +60,10 @@ export interface ValidatedPosting {
   placeLabel: string;
   expiry: ExpiryPreset;
   expiresAt: Date;
-  /** Bounded pin. The poster's raw location is never part of this result. */
+  /** The confirmed pin, exactly as submitted. */
   pin: { lat: number; lng: number };
+  /** "approximate" when the poster published a private-home pin. */
+  precision: "exact" | "approximate";
 }
 
 export type ValidationResult =
@@ -77,9 +79,38 @@ const isCoord = (c: unknown): c is { lat: number; lng: number } => {
   );
 };
 
+const PIN_SOURCES = ["flyer_candidate", "search", "pin", "device"] as const;
+
+/**
+ * Check the `location` block of a publish request: a confirmed, in-range point with a known
+ * source and precision. The retired `real` and `desired` fields are rejected.
+ */
+export function validateLocationBlock(
+  r: Record<string, unknown>,
+): { ok: true; pin: { lat: number; lng: number }; precision: "exact" | "approximate" } | { ok: false; error: string } {
+  const loc = r.location;
+  if (loc == null) {
+    if (r.real != null || r.desired != null) {
+      return { ok: false, error: "Reload the page and choose where this takes place." };
+    }
+    return { ok: false, error: "Choose where this takes place on the map before publishing." };
+  }
+  const bad = { ok: false as const, error: "The pin position is not valid. Move the pin and try again." };
+  if (typeof loc !== "object" || Array.isArray(loc)) return bad;
+  const l = loc as Record<string, unknown>;
+  if (l.confirmed !== true) {
+    return { ok: false, error: "Choose where this takes place on the map before publishing." };
+  }
+  const { source, precision } = l;
+  if (!isCoord(l)) return bad;
+  if (typeof source !== "string" || !(PIN_SOURCES as readonly string[]).includes(source)) return bad;
+  if (precision !== "exact" && precision !== "approximate") return bad;
+  return { ok: true, pin: { lat: l.lat, lng: l.lng }, precision };
+}
+
 /**
  * Validate a publish request body. Pure, so the rules (exactly one category,
- * at most one RSVP link, expiry presets, bounded pin) are unit-testable.
+ * at most one RSVP link, expiry presets, confirmed pin) are unit-testable.
  */
 export function validatePostingInput(b: unknown, now: Date): ValidationResult {
   if (!b || typeof b !== "object") return { ok: false, error: "Invalid request." };
@@ -99,12 +130,11 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
   if (typeof r.title !== "string" || !r.title.trim()) {
     return { ok: false, error: "Title is required." };
   }
-  if (!isCoord(r.real)) {
-    return { ok: false, error: "Your current location is required to pin the posting." };
-  }
-  if (r.desired != null && !isCoord(r.desired)) {
-    return { ok: false, error: "Invalid pin position." };
-  }
+  const loc = validateLocationBlock(r);
+  if (!loc.ok) return loc;
+  const pin = loc.pin;
+  const precision = loc.precision;
+  const timeZone = timeZoneForPin(pin.lat, pin.lng);
 
   const rsvp = parseRsvpUrl(r.rsvpUrl);
   if (!rsvp.ok) return rsvp;
@@ -112,10 +142,7 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
 
   const kind = categoryKind(category.slug);
   if (kind === "listing") {
-    const real0 = r.real as { lat: number; lng: number };
-    const pin0 = clampPinNudge(real0, (r.desired as { lat: number; lng: number } | null | undefined) ?? real0);
-    const tz0 = timeZoneForPin(pin0.lat, pin0.lng);
-    const d = checkListingDeadline(r, tz0, now);
+    const d = checkListingDeadline(r, timeZone, now);
     if (!d.ok) return d;
     return {
       ok: true,
@@ -128,11 +155,12 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
         eventTime: null,
         endDate: d.deadline,
         endTime: null,
-        timeZone: tz0,
+        timeZone,
         placeLabel: typeof r.placeLabel === "string" ? r.placeLabel : "",
         expiry,
         expiresAt: computeExpiresAt(now, expiry),
-        pin: pin0,
+        pin,
+        precision,
       },
     };
   }
@@ -174,10 +202,6 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
     return { ok: false, error: "The end date is before the event date." };
   }
 
-  const real = r.real as { lat: number; lng: number };
-  const desired = (r.desired as { lat: number; lng: number } | null | undefined) ?? real;
-  const pin = clampPinNudge(real, desired);
-  const timeZone = timeZoneForPin(pin.lat, pin.lng);
   const expiresAt = computeExpiresAt(now, expiry);
 
   // Reject past events, judged in the posting's own time zone.
@@ -211,6 +235,7 @@ export function validatePostingInput(b: unknown, now: Date): ValidationResult {
       expiry,
       expiresAt,
       pin,
+      precision,
     },
   };
 }
@@ -241,6 +266,8 @@ export interface ValidatedEdit {
   endDate: string | null;
   endTime: string | null;
   placeLabel: string;
+  /** The new pin, precision and zone when the edit carries a location; null leaves the stored location untouched. */
+  location: { pin: { lat: number; lng: number }; precision: "exact" | "approximate"; timeZone: string | null } | null;
 }
 
 /** What an edit is judged against: the stored posting, which the edit cannot change. */
@@ -274,9 +301,19 @@ export function validatePostingEdit(b: unknown, ctx: EditContext, now: Date): Ed
   const rsvp = parseRsvpUrl(r.rsvpUrl);
   if (!rsvp.ok) return rsvp;
 
+  // No location in the body leaves the stored location untouched and the stored zone in force.
+  let location: ValidatedEdit["location"] = null;
+  if (r.location != null) {
+    const loc = validateLocationBlock(r);
+    if (!loc.ok) return loc;
+    location = { pin: loc.pin, precision: loc.precision, timeZone: timeZoneForPin(loc.pin.lat, loc.pin.lng) };
+  }
+  const zone = location ? location.timeZone : ctx.timeZone;
+  const pinForEnd = location ? location.pin : { lat: ctx.lat, lng: ctx.lng };
+
   const kind = categoryKind(category.slug);
   if (kind === "listing") {
-    const d = checkListingDeadline(r, ctx.timeZone, now);
+    const d = checkListingDeadline(r, zone, now);
     if (!d.ok) return d;
     return {
       ok: true,
@@ -290,6 +327,7 @@ export function validatePostingEdit(b: unknown, ctx: EditContext, now: Date): Ed
         endDate: d.deadline,
         endTime: null,
         placeLabel: typeof r.placeLabel === "string" ? r.placeLabel : "",
+        location,
       },
     };
   }
@@ -323,11 +361,11 @@ export function validatePostingEdit(b: unknown, ctx: EditContext, now: Date): Ed
   if (endDate && eventDate && endDate < eventDate) return { ok: false, error: "The end date is before the event date." };
 
   if (eventDate) {
-    const today = localDate(now, ctx.timeZone ?? FALLBACK_TIME_ZONE);
+    const today = localDate(now, zone ?? FALLBACK_TIME_ZONE);
     if (eventDate < today && !(endDate && endDate >= today)) {
       return { ok: false, error: "This event date has already passed. Check the date, including the year." };
     }
-    const end = eventEnd({ expiresAt: ctx.expiresAt, eventDate, endDate, endTime, timeZone: ctx.timeZone, lat: ctx.lat, lng: ctx.lng });
+    const end = eventEnd({ expiresAt: ctx.expiresAt, eventDate, endDate, endTime, timeZone: zone, ...pinForEnd });
     if (end && end.getTime() <= now.getTime()) {
       return { ok: false, error: "This event has already ended. Check the end date and time." };
     }
@@ -345,6 +383,7 @@ export function validatePostingEdit(b: unknown, ctx: EditContext, now: Date): Ed
       endDate,
       endTime,
       placeLabel: typeof r.placeLabel === "string" ? r.placeLabel : "",
+      location,
     },
   };
 }

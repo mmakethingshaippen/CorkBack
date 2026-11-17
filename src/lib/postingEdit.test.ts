@@ -13,7 +13,38 @@ describe("validatePostingEdit", () => {
     const v = validatePostingEdit({ ...base, lat: 1, lng: 2, expiry: "1m", flyerUrl: "x", isPromoted: true }, ctx, now);
     expect(v.ok).toBe(true);
     if (v.ok) {
-      expect(Object.keys(v.value).sort()).toEqual(["body", "categorySlug", "endDate", "endTime", "eventDate", "eventTime", "placeLabel", "rsvpUrl", "title"]);
+      expect(Object.keys(v.value).sort()).toEqual(["body", "categorySlug", "endDate", "endTime", "eventDate", "eventTime", "location", "placeLabel", "rsvpUrl", "title"]);
+      expect(v.value.location).toBeNull();
+    }
+  });
+  it("returns the new pin, precision and zone when a confirmed location is sent, and dates use that zone", () => {
+    const loc = { lat: 40.71, lng: -74.0, source: "pin", confirmed: true, precision: "approximate" };
+    // 03:00 UTC Nov 11 is still Nov 10 in New York and Los Angeles; use a zone where it is already Nov 11.
+    const tokyo = { lat: 35.68, lng: 139.69, source: "pin", confirmed: true, precision: "exact" };
+    const late = new Date("2026-11-10T20:00:00Z");
+    const v = validatePostingEdit({ ...base, location: loc }, ctx, now);
+    expect(v.ok).toBe(true);
+    if (v.ok) {
+      expect(v.value.location).toMatchObject({ pin: { lat: 40.71, lng: -74.0 }, precision: "approximate", timeZone: "America/New_York" });
+    }
+    // Nov 10 is today in Los Angeles (stored zone) but already past in Tokyo (Nov 11 05:00 there).
+    const sameDay = { ...base, eventDate: "2026-11-10", eventTime: null };
+    expect(validatePostingEdit(sameDay, ctx, late).ok).toBe(true);
+    expect(validatePostingEdit({ ...sameDay, location: tokyo }, ctx, late).ok).toBe(false);
+  });
+  it("rejects unconfirmed or invalid locations with the same errors as publishing", () => {
+    const pubErr = (location: unknown) => {
+      const r = validatePostingInput({ ...base, expiry: "1w", location }, now);
+      return r.ok ? null : r.error;
+    };
+    for (const location of [
+      { lat: 37.87, lng: -122.27, source: "pin", confirmed: false, precision: "exact" },
+      { lat: 999, lng: -122.27, source: "pin", confirmed: true, precision: "exact" },
+      { lat: 37.87, lng: -122.27, source: "pin", confirmed: true, precision: "fuzzy" },
+    ]) {
+      const e = validatePostingEdit({ ...base, location }, ctx, now);
+      expect(e.ok).toBe(false);
+      if (!e.ok) expect(e.error).toBe(pubErr(location));
     }
   });
   it("requires a title and exactly one valid category", () => {
@@ -40,7 +71,7 @@ describe("validatePostingEdit", () => {
   });
   it("applies the same rules as publishing to the fields they share", () => {
     const pub = (o: Record<string, unknown>) =>
-      validatePostingInput({ ...base, expiry: "1w", real: { lat: 37.87, lng: -122.27 }, ...o }, now).ok;
+      validatePostingInput({ ...base, expiry: "1w", location: { lat: 37.87, lng: -122.27, source: "pin", confirmed: true, precision: "exact" }, ...o }, now).ok;
     const edit = (o: Record<string, unknown>) => validatePostingEdit({ ...base, ...o }, ctx, now).ok;
     const cases: Record<string, unknown>[] = [
       {}, { title: "" }, { categorySlug: "nope" }, { rsvpUrl: "javascript:alert(1)" }, { rsvpUrl: "https://ok.example" },

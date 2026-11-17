@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { CATEGORIES } from "@/lib/categories";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeAddressCandidates } from "@/lib/addressCandidates";
 import type { ExtractedFlyer } from "@/lib/types";
 
 /**
@@ -39,8 +40,14 @@ markdown, no code fences, and no "key: value" lines. Use exactly these keys:
   rsvpUrl (a single URL if present, else null),
   body (a short 1-3 sentence description),
   eventDateYearPrinted (true ONLY if the year is printed on the flyer; false if
-    you had to assume the year; omit when eventDate is null).
-Do not invent a location pin — placeLabel is only the text on the flyer.`;
+    you had to assume the year; omit when eventDate is null),
+  addresses (an array of up to 5 objects {"text": string, "kind": string}, one
+    for each street address printed on the flyer, copied exactly as printed;
+    use [] when none. kind is one of: "venue" (where the event or listing
+    takes place), "contact" (a person's or organizer's contact address),
+    "return" (a return or mailing address), "other", "unknown" (cannot tell)).
+Do not invent a location pin — placeLabel is only the text on the flyer.
+Do not guess coordinates and do not make up addresses that are not printed.`;
 
 /** Extract a numeric HTTP status from the SDK error, if present. */
 function statusOf(err: unknown): number | null {
@@ -299,6 +306,8 @@ export async function POST(req: Request) {
     categorySlug: known ? parsed.categorySlug : "community",
     rsvpUrl: parsed.rsvpUrl ?? null,
     body: parsed.body ?? "",
+    // Candidates only. Never geocoded here and never a pin until the poster confirms.
+    addresses: normalizeAddressCandidates((parsed as { addresses?: unknown }).addresses),
     // Only an explicit `true` counts as "year printed". Anything else leaves the
     // flag off, and the review form asks the poster to confirm the full date.
     ...(parsed.eventDate && parsed.eventDateYearPrinted === true ? { eventDateYearPrinted: true } : {}),

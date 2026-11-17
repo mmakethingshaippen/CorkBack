@@ -8,7 +8,7 @@ import { PostingActions } from "@/components/ui/PostingActions";
 import { NavyLink } from "@/components/ui/actions";
 import { CalendarIcon, ClockIcon, MapPinIcon, ExternalLinkIcon } from "@/components/icons";
 import { categoryLabel } from "@/lib/categories";
-import { getPosting, getProfileByUsername } from "@/lib/postings";
+import { getLocationPrecision, getPosting, getProfileByUsername } from "@/lib/postings";
 import { isFollowing } from "@/lib/follows";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { getViewer } from "@/lib/auth";
@@ -21,7 +21,8 @@ import { CorkBand } from "@/components/ui/CorkBand";
 import { getHiddenNotice, hasPendingReport, listReplies } from "@/lib/moderationData";
 import { ShareButton } from "@/components/ui/ShareButton";
 import { isPostingActive } from "@/lib/lifecycle";
-import { fieldSpec } from "@/lib/postingKinds";
+import { fieldSpec, locationLabels } from "@/lib/postingKinds";
+import { locationNote } from "@/lib/postingLocation";
 import { formatDateOnly, onBoardUntilLine } from "@/lib/postingDisplay";
 import { createClient } from "@/lib/supabase/server";
 import { getFriendPlans, getViewerReaction } from "@/lib/reactions";
@@ -80,6 +81,10 @@ export default async function PostingPage({
   if (!isListing && posting.endDate && posting.endDate !== posting.eventDate) endParts.push(formatDate(posting.endDate));
   if (posting.endTime) endParts.push(`${endParts.length ? "at " : ""}${posting.endTime.slice(0, 5)}`);
   const endLabel = endParts.length ? `Ends ${endParts.join(" ")}` : null;
+  const placeLabels = locationLabels(posting.categorySlug, { hasEventDate: Boolean(posting.eventDate) });
+  // Seed postings (demo mode, no database) have no precision column to read.
+  const precision = isUuid(posting.id) ? await getLocationPrecision(await createClient(), posting.id) : "unreviewed";
+  const precisionNote = locationNote(precision);
   const untilLine = active ? onBoardUntilLine(posting) : null;
 
   return (
@@ -142,8 +147,16 @@ export default async function PostingPage({
             </div>
           ) : null}
           <div className="flex items-center gap-2">
-            <MapPinIcon className="text-ink/60" /> <dd>{posting.placeLabel}</dd>
+            <MapPinIcon className="text-ink/60" />{" "}
+            <dd>
+              <span className="font-bold">{placeLabels.detail}:</span> {posting.placeLabel}
+            </dd>
           </div>
+          {precisionNote ? (
+            <div className="pl-7 text-sm text-ink/70">
+              <dd>{precisionNote}</dd>
+            </div>
+          ) : null}
         </dl>
 
         {untilLine ? <p className="text-sm text-ink/70">{untilLine}</p> : null}

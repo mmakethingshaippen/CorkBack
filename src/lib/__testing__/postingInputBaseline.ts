@@ -1,7 +1,8 @@
 // FROZEN COPY of src/lib/postingInput.ts at git HEAD before the board-usability-improvements feature.
 // Test-only: the regression oracle for Property 12 (event categories unchanged). Do not edit or import from app code.
 import { CATEGORIES } from "../categories";
-import { EXPIRY_PRESETS, clampPinNudge, computeExpiresAt, type ExpiryPreset } from "../domain";
+import { EXPIRY_PRESETS, computeExpiresAt, type ExpiryPreset } from "../domain";
+import { clampPinNudge } from "./legacyClamp";
 import { FALLBACK_TIME_ZONE, eventEnd, isClockTime, isIsoDate, localDate, timeZoneForPin } from "../lifecycle";
 
 export interface ValidatedPosting {

@@ -4,9 +4,12 @@ import { validatePostingInput } from "@/lib/postingInput";
 
 /**
  * Create a posting. Requires an authenticated author. Server computes expires_at
- * from the preset and clamps the pin to stay near the poster's real location.
- * Only the bounded pin is stored; the raw location is discarded, and the
+ * from the preset. The pin is the point the poster confirmed (exact, or the
+ * approximate point computed in their browser) and location_precision records
+ * which. No source, device position or flyer address text is stored, and the
  * response contains just the new id. Nothing is public until this row is written.
+ * Requires supabase/stage14_posting_location.sql to be applied first: without
+ * the location_precision column the insert fails (see design, Error handling).
  */
 export async function POST(req: Request) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -67,6 +70,7 @@ export async function POST(req: Request) {
       place_label: p.placeLabel,
       lat: p.pin.lat,
       lng: p.pin.lng,
+      location_precision: p.precision,
       expiry: p.expiry,
       expires_at: p.expiresAt.toISOString(),
     })

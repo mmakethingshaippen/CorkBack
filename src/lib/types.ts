@@ -1,4 +1,5 @@
 import type { ExpiryPreset } from "./domain";
+import type { AddressCandidate } from "./addressCandidates";
 
 /** A posting as surfaced to the public map and posting page. */
 export interface Posting {
@@ -24,6 +25,8 @@ export interface Posting {
   authorUsername: string;
   /** Author's stored photo path (avatars bucket), or null for the fallback. */
   authorAvatarPath?: string | null;
+  /** How precise the pin is. Read separately for the detail page; absent elsewhere. */
+  locationPrecision?: "exact" | "approximate" | "unreviewed";
   /** Aggregate counts only. Who liked / who plans to go is never part of a posting. */
   likeCount: number;
   goingCount: number;
@@ -59,4 +62,6 @@ export interface ExtractedFlyer {
    * year was guessed and the review form makes the poster confirm the full date.
    */
   eventDateYearPrinted?: boolean;
+  /** Address candidates read from the flyer. Absent in extractions saved before this field existed. */
+  addresses?: AddressCandidate[];
 }
