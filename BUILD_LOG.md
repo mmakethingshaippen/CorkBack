@@ -921,3 +921,19 @@ Set the two geocoder environment variables in Vercel Production and redeployed. 
 - Test data: two short-lived accounts (`delivered+cbgeo_*@resend.dev`) were created for the signed-in/alert checks and deleted; 0 test users remain.
 
 **Final production deployment:** redeploy of commit `f5a0660`; production alias https://corkback.vercel.app serves it with the geocoder enabled. Stage 14 and stage 15 remain applied; no migration was re-run.
+
+## Posting form privacy-warning copy fix (2026-11-16)
+
+Made the private-home warning consistent with the form's statement that flyer photos are not published.
+
+- **Verified behavior:** the publish path (POST /api/postings) sends only JSON text fields; it never uploads or stores a flyer image (no flyer_url is written, and the scanned flyer stays in the browser's sessionStorage). So the review form's line "The flyer photo is not published. Only the text you see here goes public." is accurate, and the earlier FLYER_IMAGE_WARNING that mentioned a flyer image was the inconsistent statement.
+- **Change (wording only):** FLYER_IMAGE_WARNING in src/components/map/LocationPicker.tsx now reads "Your posting text can still reveal an address. An approximate pin does not hide personal details included in the text." The guard test in src/lib/locationGuards.test.ts was updated to assert the new string. No logic, no API, no SQL change.
+- **Checks:** typecheck clean; lint clean (picker + guard); vitest on locationGuards, locationPickerActions and postingLocation.geo = 28 passed.
+
+### Remaining manual checks (real device / camera — for the owner)
+These need a physical phone and camera and are not automatable here:
+- Scan a real flyer with the phone camera; confirm the extracted fields and address candidates, and that scanning reads no device location.
+- "Use my location" in the posting form: accuracy of the distance and the radius ring, and that it runs only on an explicit tap.
+- Automatic browsing location on the home board where permission is already granted, and no prompt in a fresh browser.
+- Touch use of the location picker: map tap, pin drag, the move-pin buttons, and the private-home approximate ring.
+- A real signed-in end-to-end posting publish and a signed-in public-venue search in the browser (the route's cookie-session auth path), and a real alert email to a test inbox.

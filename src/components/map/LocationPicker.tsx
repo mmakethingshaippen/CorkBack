@@ -44,12 +44,12 @@ export const NO_ADDRESS_TEXT = "No address was found on the flyer. Search for th
 // Req 9.3, audited for Req 23.6 and 23.8: this copy describes an approximate area and
 // makes no claim that the displaced pin guarantees anonymity or hides the poster, so it
 // is kept as-is. The "about a quarter mile (400 m)" and "The street address is not shown"
-// statements are preserved. The honest anonymity caveat is carried by FLYER_IMAGE_WARNING.
+// statements are preserved. The honest caveat about the posting text is carried by FLYER_IMAGE_WARNING.
 export const PRIVATE_HOME_EXPLANATION = "Visitors will see a pin about a quarter mile (400 m) from this place, not the exact spot. The street address is not shown. Name the area, such as a neighborhood or street, and leave out the house number.";
 
-// Req 23.7: a separate warning, distinct from the pin and the approximate-area note,
-// that the flyer image or the posting text can still reveal an address.
-export const FLYER_IMAGE_WARNING = "A flyer image or words in your posting can still show an address. The approximate pin does not hide what the image or text says.";
+// Req 23.7: a separate warning, distinct from the pin and the approximate-area note.
+// Flyer photos are not published (see ReviewForm), so this warns only about the posting text.
+export const FLYER_IMAGE_WARNING = "Your posting text can still reveal an address. An approximate pin does not hide personal details included in the text.";
 
 // Req 22.5, 22.6: shown before any private-home lookup leaves the browser, and again
 // if the service refuses a private-home lookup on a public map search service.

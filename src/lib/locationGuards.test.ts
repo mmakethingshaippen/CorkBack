@@ -165,9 +165,9 @@ describe("posting-location guards", () => {
     expect(locationNote("unreviewed")).toBeNull();
 
     // Requirement 23.7: a separate warning, distinct from the pin and the approximate note,
-    // that a flyer image or the posting text can still reveal an address.
+    // that the posting text can still reveal an address (flyer photos are not published).
     expect(flyerWarning).toBe(
-      "A flyer image or words in your posting can still show an address. The approximate pin does not hide what the image or text says.",
+      "Your posting text can still reveal an address. An approximate pin does not hide personal details included in the text.",
     );
     // It is genuinely rendered by the picker, not just exported.
     expect(read(PICKER)).toContain("FLYER_IMAGE_WARNING");
